@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/blood_utils.dart';
+import '../../../core/utils/sorting_utils.dart';
 import '../../../core/widgets/custom_loader.dart';
 import '../../../core/widgets/user_card.dart';
 import '../../settings/screens/settings_screen.dart';
@@ -31,7 +32,8 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   bool _hasMore = true;
   bool _hasError = false;
 
-  final int _limit = 10;
+  // INCREASED LIMIT FOR BETTER LOCAL SORTING
+  final int _limit = 50;
   int _offset = 0;
   final ScrollController _scrollController = ScrollController();
   Position? _currentPosition;
@@ -39,6 +41,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
 
   // User Data
   String? _myBloodType;
+  String? _myCity;
   int _myPoints = 0;
   String _statusMessage = "initializing".tr();
 
@@ -47,7 +50,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   DateTime? _lastDonationDate;
   DateTime? _nextEligibleDate;
   Timer? _countdownTimer;
-  Timer? _autoRefreshTimer; // NEW: Timer for auto-refresh
+  Timer? _autoRefreshTimer;
   String _remainingTime = '';
 
   @override
@@ -56,10 +59,8 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     _scrollController.addListener(_onScroll);
     _initData();
 
-    // NEW: Auto Refresh every 2 minutes
     _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       if (!_isDeferred && !_hasError && mounted) {
-        // We do a silent refresh (loadMore: false)
         _fetchData(loadMore: false);
       }
     });
@@ -69,11 +70,10 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   void dispose() {
     _scrollController.dispose();
     _countdownTimer?.cancel();
-    _autoRefreshTimer?.cancel(); // Important: Clean up
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
-  // --- Helper: Format Timer ---
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     String days = duration.inDays.toString();
@@ -83,7 +83,6 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     return "$days:$hours:$minutes:$seconds";
   }
 
-  // --- Logic: 3 Months Timer ---
   void _startCountdownTimer() {
     _countdownTimer?.cancel();
     if (_nextEligibleDate == null) return;
@@ -152,11 +151,10 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
       if (loadMore) {
         _isLoadingMore = true;
       } else {
-        // Don't show full loader on auto-refresh, just transparent update
         if (_feedItems.isEmpty) _isInitialLoading = true;
         _offset = 0;
         _hasMore = true;
-        _feedItems.clear(); // Clear list to avoid duplicates on refresh
+        _feedItems.clear();
       }
     });
 
@@ -166,12 +164,13 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     try {
       final myProfile = await supabase
           .from('profiles')
-          .select('blood_type, points, last_donation_date')
+          .select('blood_type, points, last_donation_date, city')
           .eq('id', userId)
           .single();
 
       _myBloodType = (myProfile['blood_type'] as String?)?.trim();
       _myPoints = myProfile['points'] ?? 0;
+      _myCity = myProfile['city'];
 
       if (myProfile['last_donation_date'] != null) {
         _lastDonationDate = DateTime.parse(myProfile['last_donation_date']);
@@ -213,6 +212,16 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
                   'type': 'receiver',
                 })
             .toList();
+
+        // --- APPLY SMART SORTING ---
+        SortingUtils.sortNeedyUsers(
+          receivers,
+          donorBloodType: _myBloodType,
+          donorCity: _myCity, // Passing City
+          donorLat: _currentPosition?.latitude,
+          donorLng: _currentPosition?.longitude,
+        );
+        // ---------------------------
 
         if (mounted) {
           if (receivers.length < _limit) {

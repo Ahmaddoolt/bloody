@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/layout/main_layout.dart'; // Import MainLayout
+import '../../../core/layout/main_layout.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/custom_loader.dart';
 
@@ -20,13 +20,14 @@ class _SignupScreenState extends State<SignupScreen> {
 
   // Controllers
   final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
 
-  // Date State
+  // State
   DateTime? _selectedDate;
-
   String? _selectedBloodType;
+  String? _selectedCity;
   String _selectedType = 'receiver';
   bool _isLoading = false;
 
@@ -40,6 +41,33 @@ class _SignupScreenState extends State<SignupScreen> {
     'O+',
     'O-',
   ];
+
+  // Keys for translation
+  final List<String> _syrianCities = [
+    'Damascus',
+    'Aleppo',
+    'Homs',
+    'Hama',
+    'Latakia',
+    'Tartus',
+    'Idlib',
+    'Daraa',
+    'As-Suwayda',
+    'Quneitra',
+    'Deir ez-Zor',
+    'Al-Hasakah',
+    'Raqqa',
+    'Rif Dimashq'
+  ];
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   Future<Position?> _getCurrentLocation() async {
     try {
@@ -144,6 +172,10 @@ class _SignupScreenState extends State<SignupScreen> {
       _showError('select_blood_error'.tr());
       return;
     }
+    if (_selectedCity == null) {
+      _showError('Please select your city');
+      return;
+    }
     if (_selectedDate == null) {
       _showError('enter_dob_error'.tr());
       return;
@@ -153,27 +185,31 @@ class _SignupScreenState extends State<SignupScreen> {
     final supabase = Supabase.instance.client;
 
     try {
+      // 1. Get GPS Location
       final position = await _getCurrentLocation();
 
       final cleanEmail = _emailController.text.trim();
+      final cleanUsername = _usernameController.text.trim();
       final cleanPassword = _passwordController.text.trim();
       final cleanPhone = _phoneController.text.trim();
       final dobString = _selectedDate!.toIso8601String().split('T')[0];
 
-      // 1. Sign Up
+      // 2. Sign Up User
       final AuthResponse res = await supabase.auth.signUp(
         email: cleanEmail,
         password: cleanPassword,
       );
 
-      // 2. Insert Profile Data
+      // 3. Insert Profile Data
       if (res.user != null) {
         await supabase.from('profiles').insert({
           'id': res.user!.id,
           'email': cleanEmail,
+          'username': cleanUsername,
           'phone': cleanPhone,
           'user_type': _selectedType,
-          'blood_type': _selectedBloodType, // Critical data point
+          'blood_type': _selectedBloodType,
+          'city': _selectedCity,
           'latitude': position?.latitude,
           'longitude': position?.longitude,
           'birth_date': dobString,
@@ -187,7 +223,6 @@ class _SignupScreenState extends State<SignupScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          // 3. Force Navigation to Home directly to avoid "Stuck" state
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (_) => MainLayout(userType: _selectedType),
@@ -214,6 +249,7 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dropdownColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -226,6 +262,7 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // User Type Selector
                 Row(
                   children: [
                     Expanded(
@@ -248,17 +285,33 @@ class _SignupScreenState extends State<SignupScreen> {
                   ],
                 ),
                 const SizedBox(height: 30),
+
+                // Email
                 TextFormField(
                   controller: _emailController,
                   validator: (val) =>
                       (val == null || val.isEmpty) ? 'required'.tr() : null,
                   decoration: InputDecoration(
-                    labelText: 'email_username'.tr(),
-                    hintText: 'enter_valid_email'.tr(),
+                    labelText: 'email'.tr(),
                     prefixIcon: const Icon(Icons.email_outlined),
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Username (NEW & TRANSLATED)
+                TextFormField(
+                  controller: _usernameController,
+                  validator: (val) => (val == null || val.length < 3)
+                      ? 'Username too short'
+                      : null,
+                  decoration: InputDecoration(
+                    labelText: 'username'.tr(),
+                    prefixIcon: const Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Password
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
@@ -273,6 +326,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Phone
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
@@ -284,6 +339,25 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // City Dropdown
+                DropdownButtonFormField<String>(
+                  value: _selectedCity,
+                  dropdownColor: dropdownColor,
+                  items: _syrianCities
+                      .map((city) =>
+                          DropdownMenuItem(value: city, child: Text(city.tr())))
+                      .toList(),
+                  onChanged: (val) => setState(() => _selectedCity = val),
+                  decoration: const InputDecoration(
+                    labelText: 'City',
+                    prefixIcon: Icon(Icons.location_city),
+                  ),
+                  validator: (val) => val == null ? 'Required' : null,
+                ),
+                const SizedBox(height: 16),
+
+                // Date of Birth
                 InkWell(
                   onTap: _pickDate,
                   child: InputDecorator(
@@ -304,10 +378,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Blood Type
                 DropdownButtonFormField<String>(
                   value: _selectedBloodType,
-                  dropdownColor:
-                      isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                  dropdownColor: dropdownColor,
                   items: _bloodTypes
                       .map(
                         (type) =>
@@ -321,6 +396,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
+
+                // Submit Button
                 ElevatedButton(
                   onPressed: _isLoading ? null : _signUp,
                   child: _isLoading

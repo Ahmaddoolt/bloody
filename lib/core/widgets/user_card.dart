@@ -25,6 +25,9 @@ class UserCard extends StatelessWidget {
     final points = userData['points'] ?? 0;
     final int age = BloodUtils.calculateAge(userData['birth_date']);
 
+    // NEW: Prefer username, fallback to email prefix
+    final displayName = userData['username'] ?? email.split('@')[0];
+
     // Theme references
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -93,7 +96,7 @@ class UserCard extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              email.split('@')[0],
+                              displayName, // Updated
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,

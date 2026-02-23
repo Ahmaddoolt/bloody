@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/blood_utils.dart';
+import '../../../core/utils/sorting_utils.dart';
 import '../../../core/widgets/custom_loader.dart';
 import '../../../core/widgets/user_card.dart';
 
@@ -28,7 +29,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   bool _isLoadingMore = false;
   bool _hasMore = true;
 
-  final int _limit = 10;
+  final int _limit = 50;
   int _offset = 0;
   final ScrollController _scrollController = ScrollController();
 
@@ -41,6 +42,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   String _statusMessage = "initializing".tr();
 
   String? _neededBloodType;
+  String? _myCity;
 
   final List<String> _allBloodTypes = [
     'A+',
@@ -57,11 +59,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-
-    // Start initialization
     _initData();
-
-    // Auto Refresh every 2 minutes
     _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       if (mounted && _neededBloodType != null) {
         _fetchDonors(loadMore: false);
@@ -85,14 +83,8 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   }
 
   Future<void> _initData() async {
-    // 1. Start Location logic (DO NOT AWAIT - allow it to run in background)
-    // This prevents location errors from blocking the profile fetch.
     _determinePosition();
-
-    // 2. Fetch Profile immediately
     await _fetchInitialProfile();
-
-    // 3. Failsafe: Ensure loader stops after 5 seconds no matter what
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted && _isInitialLoading) {
         setState(() => _isInitialLoading = false);
@@ -105,7 +97,6 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     setState(() => _statusMessage = "checking_location".tr());
 
     try {
-      // Check permissions first to avoid unhandled exceptions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -125,7 +116,6 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
           timeLimit: const Duration(seconds: 5));
       _updateLocation(position);
     } catch (e) {
-      // If current position fails, try last known
       try {
         Position? lastKnown = await Geolocator.getLastKnownPosition();
         if (lastKnown != null) _updateLocation(lastKnown);
@@ -162,7 +152,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     try {
       final myProfile = await supabase
           .from('profiles')
-          .select('blood_type')
+          .select('blood_type, city')
           .eq('id', userId)
           .maybeSingle();
 
@@ -172,16 +162,15 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
           setState(() {
             _neededBloodType = normalized;
+            _myCity = myProfile['city'];
           });
 
           if (normalized != null) {
             await _fetchDonors();
           } else {
-            // Blood type exists but is invalid/not in list
             setState(() => _isInitialLoading = false);
           }
         } else {
-          // No profile or blood type found - Stop loading so user can pick manually
           setState(() => _isInitialLoading = false);
         }
       }
@@ -226,11 +215,39 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
       if (mounted) {
         final List<dynamic> data = response as List<dynamic>;
+        final List<Map<String, dynamic>> fetchedDonors =
+            List<Map<String, dynamic>>.from(data);
+
+        // --- NEW: Remove donors who donated recently (within 90 days) ---
+        final now = DateTime.now();
+        fetchedDonors.removeWhere((donor) {
+          if (donor['last_donation_date'] == null) return false; // Can donate
+          try {
+            final lastDate = DateTime.parse(donor['last_donation_date']);
+            final readyDate = lastDate.add(const Duration(days: 90));
+            // If Today is BEFORE Ready Date, they cannot donate -> Remove them
+            return now.isBefore(readyDate);
+          } catch (e) {
+            return false;
+          }
+        });
+        // -------------------------------------------------------------
+
+        // --- APPLY SMART SORTING ---
+        SortingUtils.sortDonors(
+          fetchedDonors,
+          receiverBloodType: _neededBloodType,
+          receiverCity: _myCity,
+          receiverLat: _currentPosition?.latitude,
+          receiverLng: _currentPosition?.longitude,
+        );
+
         if (data.length < _limit) {
           _hasMore = false;
         }
+
         setState(() {
-          _donors.addAll(List<Map<String, dynamic>>.from(data));
+          _donors.addAll(fetchedDonors);
           _offset += _limit;
           _isInitialLoading = false;
           _isLoadingMore = false;
@@ -296,6 +313,9 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
     try {
       final supabase = Supabase.instance.client;
+      final today = DateTime.now().toIso8601String().split('T')[0];
+
+      // 1. Update Donor Points & Date
       final data = await supabase
           .from('profiles')
           .select('points')
@@ -303,12 +323,16 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
           .single();
       int currentPoints = data['points'] ?? 0;
 
-      final today = DateTime.now().toIso8601String().split('T')[0];
-
       await supabase.from('profiles').update({
         'points': currentPoints + 10,
         'last_donation_date': today,
       }).eq('id', donorId);
+
+      // 2. INSERT into Donations Table
+      await supabase.from('donations').insert({
+        'donor_id': donorId,
+        'status': 'completed',
+      });
 
       if (mounted) {
         Navigator.pop(context);
@@ -317,6 +341,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
               content: Text("donation_confirmed".tr(args: [donorName])),
               backgroundColor: Colors.green),
         );
+        // Refresh to remove the donor from the list immediately
         _fetchDonors(loadMore: false);
       }
     } catch (e) {
