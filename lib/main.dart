@@ -1,4 +1,6 @@
 // file: lib/main.dart
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,8 +9,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/constants/supabase_constants.dart';
 import 'core/layout/main_layout.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/app_logger.dart';
 import 'core/widgets/custom_loader.dart';
-import 'features/admin/screens/admin_home_screen.dart'; // New Import
+import 'features/admin/screens/admin_home_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
 import 'features/splash/splash_screen.dart';
@@ -67,62 +70,108 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  Future<bool> _checkOnboardingStatus() async {
+  bool _isLoading = true;
+  bool _seenOnboarding = false;
+  bool _isAuthenticated = false;
+  bool _isAdmin = false;
+  String _userType = 'receiver';
+
+  late final StreamSubscription<AuthState> _authStateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAuth();
+  }
+
+  /// 1. Sets up listener and checks initial state ONCE.
+  /// This prevents the MainLayout from being destroyed during navigation.
+  Future<void> _initializeAuth() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('seen_onboarding') ?? false;
+    _seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
+
+    _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session == null) {
+        if (mounted) {
+          setState(() {
+            _isAuthenticated = false;
+            _isLoading = false;
+          });
+        }
+      } else {
+        _handleUserSession(session.user);
+      }
+    });
+  }
+
+  /// 2. Fetches profile logic safely
+  Future<void> _handleUserSession(User user) async {
+    // Check Admin
+    if (user.email == 'adminbloody2026@gmail.com') {
+      if (mounted) {
+        setState(() {
+          _isAdmin = true;
+          _isAuthenticated = true;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    // Check Normal User Profile
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('user_type')
+          .eq('id', user.id)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _userType = data['user_type'] ?? 'receiver';
+          _isAdmin = false;
+          _isAuthenticated = true;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      AppLogger.error("AuthGate._handleUserSession", e);
+      if (mounted) {
+        setState(() {
+          _userType = 'receiver'; // Fallback
+          _isAdmin = false;
+          _isAuthenticated = true;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<AuthState>(
-      stream: Supabase.instance.client.auth.onAuthStateChange,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: CustomLoader());
-        }
+    // Show Loader only during the very first boot
+    if (_isLoading) {
+      return const Scaffold(body: CustomLoader());
+    }
 
-        final session = snapshot.data?.session;
+    // Unauthenticated -> Login / Onboarding
+    if (!_isAuthenticated) {
+      return _seenOnboarding ? const LoginScreen() : const OnboardingScreen();
+    }
 
-        if (session != null) {
-          // 1. Check if Super Admin
-          if (session.user.email == 'adminbloody2026@gmail.com') {
-            return const AdminHomeScreen();
-          }
+    // Authenticated -> Admin Route
+    if (_isAdmin) {
+      return const AdminHomeScreen();
+    }
 
-          // 2. Otherwise, fetch profile for normal users
-          return FutureBuilder<Map<String, dynamic>>(
-            future: Supabase.instance.client
-                .from('profiles')
-                .select('user_type')
-                .eq('id', session.user.id)
-                .single(),
-            builder: (context, profileSnapshot) {
-              if (profileSnapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: CustomLoader());
-              }
-              if (profileSnapshot.hasData) {
-                final userType = profileSnapshot.data!['user_type'];
-                return MainLayout(userType: userType ?? 'receiver');
-              }
-              // If profile fetch fails, assume receiver or fallback
-              return const MainLayout(userType: 'receiver');
-            },
-          );
-        }
-
-        return FutureBuilder<bool>(
-          future: _checkOnboardingStatus(),
-          builder: (context, onboardingSnapshot) {
-            if (onboardingSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(body: CustomLoader());
-            }
-            final seenOnboarding = onboardingSnapshot.data ?? false;
-            return seenOnboarding
-                ? const LoginScreen()
-                : const OnboardingScreen();
-          },
-        );
-      },
-    );
+    // Authenticated -> User Route (Safe, will not rebuild on pop)
+    return MainLayout(userType: _userType);
   }
 }

@@ -1,11 +1,13 @@
-// file: lib/features/centers/screens/center_inventory_screen.dart
+// file: lib/features/centers/presentation/screens/center_inventory_screen.dart
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/custom_loader.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/app_logger.dart'; // Import Logger
+import '../../../../core/widgets/custom_loader.dart';
+import '../data/low_stock_alert_service.dart';
 import '../widgets/blood_stock_tile.dart';
 
 class CenterInventoryScreen extends StatefulWidget {
@@ -19,20 +21,12 @@ class CenterInventoryScreen extends StatefulWidget {
 
 class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
   final _supabase = Supabase.instance.client;
-  bool _isLoading = true;
+  final _alertService = LowStockAlertService();
 
+  bool _isLoading = true;
   List<Map<String, dynamic>> _inventory = [];
 
-  final List<String> _allBloodTypes = [
-    'A+',
-    'A-',
-    'B+',
-    'B-',
-    'AB+',
-    'AB-',
-    'O+',
-    'O-'
-  ];
+  final List<String> _allBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
@@ -40,45 +34,51 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
     _fetchInventory();
   }
 
+  // ── Data Fetching ─────────────────────────────────────────────────────────
+
   Future<void> _fetchInventory() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _supabase
-          .from('center_inventory')
-          .select()
-          .eq('center_id', widget.center['id']);
+      AppLogger.info("Fetching inventory for Center ID: ${widget.center['id']}");
 
-      final List<Map<String, dynamic>> loadedData =
-          List<Map<String, dynamic>>.from(data);
+      final data =
+          await _supabase.from('center_inventory').select().eq('center_id', widget.center['id']);
+
+      final List<Map<String, dynamic>> loadedData = List<Map<String, dynamic>>.from(data);
 
       _inventory = _allBloodTypes.map((type) {
         final existing = loadedData.firstWhere(
           (element) => element['blood_type'] == type,
           orElse: () => <String, dynamic>{},
         );
-
         return {
           'blood_type': type,
-          'quantity': existing['quantity'] ?? 0,
+          'quantity': (existing['quantity'] as num?)?.toInt() ?? 0,
           'is_urgent': existing['is_urgent'] ?? false,
-          'needed_quantity': existing['needed_quantity'] ?? 0,
+          'needed_quantity': (existing['needed_quantity'] as num?)?.toInt() ?? 0,
           'id': existing['id'],
         };
       }).toList();
-    } catch (e) {
+
+      AppLogger.success("Inventory loaded successfully. Items: ${_inventory.length}");
+    } catch (e, stack) {
+      // 🔴 COLORFUL ERROR LOGGING HERE
+      AppLogger.error("CenterInventoryScreen._fetchInventory", e, stack);
+
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('error_loading'.tr())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('error_loading'.tr())));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ── Save + Low Stock Alert (Feature 4) ────────────────────────────────────
+
   Future<void> _saveItem(String type, int quantity, int needed) async {
     final isUrgent = needed > 0;
 
-    // Optimistic Update
+    // Optimistic UI update
     final index = _inventory.indexWhere((i) => i['blood_type'] == type);
     if (index != -1) {
       setState(() {
@@ -89,6 +89,8 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
     }
 
     try {
+      AppLogger.info("Saving $type: Qty=$quantity, Needed=$needed");
+
       await _supabase.from('center_inventory').upsert(
         {
           'center_id': widget.center['id'],
@@ -99,23 +101,59 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
         },
         onConflict: 'center_id, blood_type',
       );
-    } catch (e) {
+
+      AppLogger.success("Inventory updated for $type");
+
+      // ── Feature 4: Low Stock Alert Logic ────
+      if (quantity < LowStockAlertService.lowStockThreshold) {
+        AppLogger.warning("Stock low ($quantity) for $type. Triggering alert...");
+
+        final sent = await _alertService.sendLowStockAlert(
+          centerId: widget.center['id'].toString(),
+          centerName: widget.center['name'] ?? 'Blood Center',
+          bloodType: type,
+          currentQuantity: quantity,
+        );
+
+        if (sent && mounted) {
+          AppLogger.success("Low stock alert sent successfully.");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.notifications_active, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: Text('Alert sent to $type donors!',
+                          style: const TextStyle(color: Colors.white))),
+                ],
+              ),
+              backgroundColor: AppTheme.primaryRed,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e, stack) {
+      // 🔴 COLORFUL ERROR LOGGING HERE
+      AppLogger.error("CenterInventoryScreen._saveItem", e, stack);
+
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('error_saving'.tr())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('error_saving'.tr())));
       }
     }
   }
 
+  // ── Edit Sheet ────────────────────────────────────────────────────────────
+
   void _showEditSheet(Map<String, dynamic> item) {
-    final type = item['blood_type'];
-    int currentQty = item['quantity'];
-    int neededQty = item['needed_quantity'];
+    final type = item['blood_type'] as String;
+    int currentQty = item['quantity'] as int;
+    int neededQty = item['needed_quantity'] as int;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      // No explicit background color, let Theme handle it
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -126,58 +164,76 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
             final isDark = theme.brightness == Brightness.dark;
             final textColor = theme.colorScheme.onSurface;
             final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
-
-            // Dynamic container color for inputs/groups
-            final containerColor = isDark
-                ? Colors.white.withOpacity(0.05)
-                : Colors.grey.withOpacity(0.05);
+            final containerColor =
+                isDark ? Colors.white.withOpacity(0.05) : Colors.grey.withOpacity(0.05);
 
             return Container(
               padding: EdgeInsets.only(
-                  left: 24,
-                  right: 24,
-                  top: 12,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 24),
+                left: 24,
+                right: 24,
+                top: 12,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Drag Handle
                   Center(
                     child: Container(
-                        width: 40,
-                        height: 5,
-                        decoration: BoxDecoration(
-                            color: Colors.grey[400],
-                            borderRadius: BorderRadius.circular(10))),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Header
-                  Center(
-                    child: Text(
-                      "$type ${'management'.tr()}",
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: textColor),
+                      width: 40,
+                      height: 5,
+                      decoration: BoxDecoration(
+                          color: Colors.grey[400], borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: Text(
+                      '$type ${'management'.tr()}',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor),
+                    ),
+                  ),
+
+                  // Warning Banner
+                  if (currentQty < LowStockAlertService.lowStockThreshold) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryRed.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.primaryRed.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: AppTheme.primaryRed, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Critical: Below ${LowStockAlertService.lowStockThreshold}. Saving alerts donors.',
+                              style: const TextStyle(
+                                color: AppTheme.primaryRed,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 30),
 
-                  // 1. Stock Control
-                  Text("current_stock".tr(),
+                  // Stock Control
+                  Text('current_stock'.tr(),
                       style: TextStyle(
-                          color: subTextColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold)),
+                          color: subTextColor, fontSize: 13, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                        color: containerColor,
-                        borderRadius: BorderRadius.circular(16)),
+                        color: containerColor, borderRadius: BorderRadius.circular(16)),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -187,11 +243,16 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                             if (currentQty > 0) currentQty--;
                           }),
                         ),
-                        Text("$currentQty",
-                            style: TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.w900,
-                                color: textColor)),
+                        // ✅ ERROR FIXED HERE: Cleaned up logic and removed syntax error
+                        Text(
+                          '$currentQty',
+                          style: TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              color: currentQty < LowStockAlertService.lowStockThreshold
+                                  ? AppTheme.primaryRed
+                                  : textColor),
+                        ),
                         _CircleButton(
                           icon: Icons.add,
                           onTap: () => setSheetState(() => currentQty++),
@@ -201,42 +262,33 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                   ),
                   const Divider(height: 50),
 
-                  // 2. Urgent Request Control
-                  Text("request_more".tr(),
+                  // Request Control
+                  Text('request_more'.tr(),
                       style: TextStyle(
-                          color: subTextColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold)),
+                          color: subTextColor, fontSize: 13, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                        color: neededQty > 0
-                            ? Colors.red.withOpacity(0.1)
-                            : containerColor,
+                        color: neededQty > 0 ? Colors.red.withOpacity(0.1) : containerColor,
                         border: Border.all(
-                            color: neededQty > 0
-                                ? Colors.red.withOpacity(0.3)
-                                : Colors.transparent),
+                            color:
+                                neededQty > 0 ? Colors.red.withOpacity(0.3) : Colors.transparent),
                         borderRadius: BorderRadius.circular(16)),
                     child: Column(
                       children: [
                         Row(
                           children: [
                             Icon(Icons.warning_amber_rounded,
-                                color: neededQty > 0
-                                    ? AppTheme.primaryRed
-                                    : Colors.grey),
+                                color: neededQty > 0 ? AppTheme.primaryRed : Colors.grey),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                "declare_shortage".tr(),
+                                'declare_shortage'.tr(),
                                 style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: neededQty > 0
-                                        ? textColor
-                                        : subTextColor),
+                                    color: neededQty > 0 ? textColor : subTextColor),
                               ),
                             ),
                             Switch(
@@ -255,10 +307,8 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text("we_need".tr(),
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: textColor)),
+                              Text('we_need'.tr(),
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                               const SizedBox(width: 12),
                               SizedBox(
                                 width: 100,
@@ -270,18 +320,13 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
                                       color: AppTheme.primaryRed),
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly
-                                  ],
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                   decoration: InputDecoration(
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(vertical: 8),
-                                    border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8)),
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                    border:
+                                        OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                                     filled: true,
-                                    // Make input background adaptive
-                                    fillColor:
-                                        isDark ? Colors.black26 : Colors.white,
+                                    fillColor: isDark ? Colors.black26 : Colors.white,
                                   ),
                                   onChanged: (val) {
                                     neededQty = int.tryParse(val) ?? 0;
@@ -289,10 +334,8 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              Text("bags".tr(),
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: textColor)),
+                              Text('bags'.tr(),
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                             ],
                           ),
                         ],
@@ -300,26 +343,21 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                     ),
                   ),
                   const SizedBox(height: 30),
-
-                  // Save Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                          // High contrast button
                           backgroundColor: isDark ? Colors.white : Colors.black,
                           foregroundColor: isDark ? Colors.black : Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 18),
                           elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16))),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                       onPressed: () {
                         _saveItem(type, currentQty, neededQty);
                         Navigator.pop(ctx);
                       },
-                      child: Text("save_changes".tr(),
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold)),
+                      child: Text('save_changes'.tr(),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -346,17 +384,15 @@ class _CenterInventoryScreenState extends State<CenterInventoryScreen> {
                   decoration: BoxDecoration(
                     color: AppTheme.primaryRed.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: AppTheme.primaryRed.withOpacity(0.2)),
+                    border: Border.all(color: AppTheme.primaryRed.withOpacity(0.2)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.touch_app_outlined,
-                          color: AppTheme.primaryRed),
+                      const Icon(Icons.touch_app_outlined, color: AppTheme.primaryRed),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          "tap_to_edit_stock".tr(),
+                          'tap_to_edit_stock'.tr(),
                           style: const TextStyle(
                               color: AppTheme.primaryRed,
                               fontSize: 13,
@@ -399,14 +435,11 @@ class _CircleButton extends StatelessWidget {
         height: 50,
         decoration: BoxDecoration(
             color: isDark ? Colors.white10 : Colors.white,
-            border: Border.all(
-                color: isDark ? Colors.grey[700]! : Colors.grey.shade300),
+            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey.shade300),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2))
+                  color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))
             ]),
         child: Icon(icon, color: isDark ? Colors.white : Colors.black87),
       ),

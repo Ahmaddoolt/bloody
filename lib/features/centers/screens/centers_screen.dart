@@ -34,7 +34,10 @@ class _CentersScreenState extends State<CentersScreen> {
 
   bool _isMapView = false;
   Set<Marker> _markers = {};
-  String _searchQuery = "";
+  String _searchQuery = '';
+
+  bool _isSortedByStock = false;
+  bool _isSortingByStock = false;
 
   bool get _isSuperAdmin {
     final email = _supabase.auth.currentUser?.email;
@@ -45,10 +48,7 @@ class _CentersScreenState extends State<CentersScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    // Add listener to rebuild UI when search text changes (to show/hide clear button)
-    _searchController.addListener(() {
-      setState(() {});
-    });
+    _searchController.addListener(() => setState(() {}));
     _fetchCenters();
   }
 
@@ -61,32 +61,24 @@ class _CentersScreenState extends State<CentersScreen> {
 
   void _onScroll() {
     if (_isMapView) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 100) {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 100) {
       _fetchCenters(loadMore: true);
     }
   }
 
-  // NEW: Triggers search on button tap or keyboard submission
   void _triggerSearch() {
     final newQuery = _searchController.text.trim();
     if (_searchQuery != newQuery) {
-      setState(() {
-        _searchQuery = newQuery;
-      });
+      setState(() => _searchQuery = newQuery);
       _fetchCenters(loadMore: false);
     }
-    // Hide keyboard after search
     FocusScope.of(context).unfocus();
   }
 
-  // NEW: Clears search field and fetches all results
   void _clearSearch() {
     _searchController.clear();
     if (_searchQuery.isNotEmpty) {
-      setState(() {
-        _searchQuery = "";
-      });
+      setState(() => _searchQuery = '');
       _fetchCenters(loadMore: false);
     }
     FocusScope.of(context).unfocus();
@@ -103,22 +95,20 @@ class _CentersScreenState extends State<CentersScreen> {
         _centers.clear();
         _offset = 0;
         _hasMore = true;
+        _isSortedByStock = false;
       }
     });
 
     try {
       var query = _supabase.from('centers').select();
-
       if (_searchQuery.isNotEmpty) {
         query = query.ilike('name', '%$_searchQuery%');
       }
 
-      final data =
-          await query.order('created_at').range(_offset, _offset + _limit - 1);
+      final data = await query.order('created_at').range(_offset, _offset + _limit - 1);
 
       if (mounted) {
         if (data.length < _limit) _hasMore = false;
-
         setState(() {
           _centers.addAll(List<Map<String, dynamic>>.from(data));
           _offset += _limit;
@@ -137,16 +127,48 @@ class _CentersScreenState extends State<CentersScreen> {
     }
   }
 
+  Future<void> _sortCentersByStock() async {
+    if (_isSortingByStock) return;
+    setState(() => _isSortingByStock = true);
+
+    try {
+      final inventoryRows = await _supabase.from('center_inventory').select('center_id, quantity');
+
+      final Map<String, int> stockTotals = {};
+      for (final row in inventoryRows as List<dynamic>) {
+        final centerId = row['center_id'].toString();
+        final qty = (row['quantity'] as num?)?.toInt() ?? 0;
+        stockTotals[centerId] = (stockTotals[centerId] ?? 0) + qty;
+      }
+
+      final sorted = List<Map<String, dynamic>>.from(_centers);
+      sorted.sort((a, b) {
+        final aTotal = stockTotals[a['id'].toString()] ?? 0;
+        final bTotal = stockTotals[b['id'].toString()] ?? 0;
+        return aTotal.compareTo(bTotal);
+      });
+
+      if (mounted) {
+        setState(() {
+          _centers = sorted;
+          _isSortedByStock = true;
+          _isSortingByStock = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isSortingByStock = false);
+    }
+  }
+
   void _generateMarkers() {
-    Set<Marker> newMarkers = {};
-    for (var center in _centers) {
+    final Set<Marker> newMarkers = {};
+    for (final center in _centers) {
       if (center['latitude'] != null && center['longitude'] != null) {
         newMarkers.add(
           Marker(
             markerId: MarkerId(center['id'].toString()),
             position: LatLng(center['latitude'], center['longitude']),
-            icon:
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
             infoWindow: InfoWindow(
               title: center['name'],
               snippet: center['address'],
@@ -163,16 +185,13 @@ class _CentersScreenState extends State<CentersScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Delete Center?"),
-        content: const Text("This action cannot be undone."),
+        title: const Text('Delete Center?'),
+        content: const Text('This action cannot be undone.'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text("cancel".tr())),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('cancel'.tr())),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text("delete".tr(),
-                  style: const TextStyle(color: Colors.red))),
+              child: Text('delete'.tr(), style: const TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -182,9 +201,10 @@ class _CentersScreenState extends State<CentersScreen> {
         await _supabase.from('centers').delete().eq('id', id);
         _fetchCenters(loadMore: false);
       } catch (e) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Error deleting center")));
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Error deleting center')));
+        }
       }
     }
   }
@@ -215,26 +235,14 @@ class _CentersScreenState extends State<CentersScreen> {
           expand: false,
           builder: (context, scrollController) {
             return FutureBuilder(
-              future: _supabase
-                  .from('center_inventory')
-                  .select()
-                  .eq('center_id', center['id']),
+              future: _supabase.from('center_inventory').select().eq('center_id', center['id']),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CustomLoader(size: 30));
                 }
 
                 final List<dynamic> rawData = snapshot.data as List? ?? [];
-                final List<String> allTypes = [
-                  'A+',
-                  'A-',
-                  'B+',
-                  'B-',
-                  'AB+',
-                  'AB-',
-                  'O+',
-                  'O-'
-                ];
+                const allTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
                 final inventory = allTypes.map((type) {
                   final existing = rawData.firstWhere(
@@ -250,8 +258,7 @@ class _CentersScreenState extends State<CentersScreen> {
 
                 final textColor = Theme.of(context).colorScheme.onSurface;
                 final isDark = Theme.of(context).brightness == Brightness.dark;
-                final handleColor =
-                    isDark ? Colors.grey[700] : Colors.grey[300];
+                final handleColor = isDark ? Colors.grey[700] : Colors.grey[300];
 
                 return Column(
                   children: [
@@ -259,18 +266,15 @@ class _CentersScreenState extends State<CentersScreen> {
                     Container(
                       width: 40,
                       height: 4,
-                      decoration: BoxDecoration(
-                          color: handleColor,
-                          borderRadius: BorderRadius.circular(2)),
+                      decoration:
+                          BoxDecoration(color: handleColor, borderRadius: BorderRadius.circular(2)),
                     ),
                     Padding(
-                      padding: const EdgeInsets.all(20.0),
+                      padding: const EdgeInsets.all(20),
                       child: Text(
-                        "${center['name']} Stock",
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: textColor),
+                        '${center['name']} Stock',
+                        style:
+                            TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor),
                       ),
                     ),
                     Expanded(
@@ -315,7 +319,7 @@ class _CentersScreenState extends State<CentersScreen> {
                   controller: _searchController,
                   onSubmitted: (_) => _triggerSearch(),
                   decoration: InputDecoration(
-                    hintText: "...",
+                    hintText: '...',
                     prefixIcon: const Icon(Icons.search, color: Colors.grey),
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -326,8 +330,7 @@ class _CentersScreenState extends State<CentersScreen> {
                             onPressed: _clearSearch,
                           ),
                         IconButton(
-                          icon: const Icon(Icons.send,
-                              color: AppTheme.primaryRed),
+                          icon: const Icon(Icons.send, color: AppTheme.primaryRed),
                           onPressed: _triggerSearch,
                         ),
                       ],
@@ -341,6 +344,26 @@ class _CentersScreenState extends State<CentersScreen> {
               ),
         centerTitle: false,
         actions: [
+          _isSortingByStock
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryRed),
+                  ),
+                )
+              : IconButton(
+                  icon: Icon(
+                    Icons.sort_rounded,
+                    color: _isSortedByStock ? AppTheme.primaryRed : Colors.grey,
+                  ),
+                  tooltip: _isSortedByStock
+                      ? 'Sorted by stock ↑ — Tap to reset'
+                      : 'Sort by stock (lowest first)',
+                  onPressed:
+                      _isSortedByStock ? () => _fetchCenters(loadMore: false) : _sortCentersByStock,
+                ),
           if (_isSuperAdmin)
             IconButton(
               icon: const Icon(Icons.add_circle, size: 28),
@@ -350,25 +373,60 @@ class _CentersScreenState extends State<CentersScreen> {
       ),
       body: _isInitialLoading
           ? const CustomLoader()
-          : _isMapView
-              ? CentersMap(markers: _markers)
-              : CentersList(
-                  centers: _centers,
-                  isLoading: _isLoadingMore,
-                  isSuperAdmin: _isSuperAdmin,
-                  currentUserId: _currentUserId,
-                  scrollController: _scrollController,
-                  onEdit: (center) => _showAdminDialog(center: center),
-                  onDelete: (id) => _deleteCenter(id),
-                  onViewStock: (center) => _showStockModal(center),
-                  onRefresh: () async => await _fetchCenters(loadMore: false),
+          : Column(
+              children: [
+                if (_isSortedByStock)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    color: AppTheme.primaryRed.withOpacity(0.08),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            color: AppTheme.primaryRed, size: 16),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Showing centers with lowest blood stock first.',
+                            style: TextStyle(
+                              color: AppTheme.primaryRed,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => _fetchCenters(loadMore: false),
+                          child: const Icon(Icons.close, color: AppTheme.primaryRed, size: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                Expanded(
+                  child: _isMapView
+                      ? CentersMap(markers: _markers)
+                      : CentersList(
+                          centers: _centers,
+                          isLoading: _isLoadingMore,
+                          isSuperAdmin: _isSuperAdmin,
+                          currentUserId: _currentUserId,
+                          scrollController: _scrollController,
+                          onEdit: (center) => _showAdminDialog(center: center),
+                          onDelete: (id) => _deleteCenter(id),
+                          onViewStock: (center) => _showStockModal(center),
+                          onRefresh: () async => await _fetchCenters(loadMore: false),
+                        ),
                 ),
+              ],
+            ),
+      // ✅ FIX: Added unique heroTag to prevent collision
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'centers_map_fab',
         onPressed: () => setState(() => _isMapView = !_isMapView),
         backgroundColor: AppTheme.primaryRed,
         foregroundColor: Colors.white,
         icon: Icon(_isMapView ? Icons.format_list_bulleted : Icons.map),
-        label: Text(_isMapView ? "List View" : "nav".tr()),
+        label: Text(_isMapView ? 'List View' : 'nav'.tr()),
       ),
     );
   }

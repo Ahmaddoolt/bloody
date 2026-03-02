@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/centers/screens/centers_screen.dart';
 import '../../features/dashboard/screens/donor_dashboard_screen.dart';
-import '../../features/leaderboard/screens/leaderboard_screen.dart'
-    hide DonorHomeScreen;
+import '../../features/leaderboard/screens/leaderboard_screen.dart' hide DonorHomeScreen;
 import '../../features/map/screens/receiver_map_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../theme/app_theme.dart';
@@ -27,9 +26,7 @@ class _MainLayoutState extends State<MainLayout> {
   void initState() {
     super.initState();
     _screens = [
-      widget.userType == 'donor'
-          ? const DonorHomeScreen()
-          : const ReceiverHomeScreen(),
+      widget.userType == 'donor' ? const DonorHomeScreen() : const ReceiverHomeScreen(),
       const CentersScreen(),
       const LeaderboardScreen(),
       const SettingsScreen(),
@@ -57,14 +54,12 @@ class _MainLayoutState extends State<MainLayout> {
           ),
           NavigationDestination(
             icon: const Icon(Icons.local_hospital_outlined),
-            selectedIcon:
-                const Icon(Icons.local_hospital, color: AppTheme.darkRed),
+            selectedIcon: const Icon(Icons.local_hospital, color: AppTheme.darkRed),
             label: 'centers'.tr(), // Translated
           ),
           NavigationDestination(
             icon: const Icon(Icons.emoji_events_outlined),
-            selectedIcon:
-                const Icon(Icons.emoji_events, color: AppTheme.darkRed),
+            selectedIcon: const Icon(Icons.emoji_events, color: AppTheme.darkRed),
             label: 'legends'.tr(), // Translated
           ),
           NavigationDestination(

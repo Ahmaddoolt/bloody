@@ -44,16 +44,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   String? _neededBloodType;
   String? _myCity;
 
-  final List<String> _allBloodTypes = [
-    'A+',
-    'A-',
-    'B+',
-    'B-',
-    'AB+',
-    'AB-',
-    'O+',
-    'O-'
-  ];
+  final List<String> _allBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
@@ -76,8 +67,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
   void _onScroll() {
     if (_isMapView) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       _fetchDonors(loadMore: true);
     }
   }
@@ -112,8 +102,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
       }
 
       Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 5));
+          desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 5));
       _updateLocation(position);
     } catch (e) {
       try {
@@ -132,8 +121,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     if (_mapController != null) {
       _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(
-              target: LatLng(position.latitude, position.longitude), zoom: 14),
+          CameraPosition(target: LatLng(position.latitude, position.longitude), zoom: 14),
         ),
       );
     }
@@ -150,11 +138,8 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     final supabase = Supabase.instance.client;
     final userId = supabase.auth.currentUser!.id;
     try {
-      final myProfile = await supabase
-          .from('profiles')
-          .select('blood_type, city')
-          .eq('id', userId)
-          .maybeSingle();
+      final myProfile =
+          await supabase.from('profiles').select('blood_type, city').eq('id', userId).maybeSingle();
 
       if (mounted) {
         if (myProfile != null && myProfile['blood_type'] != null) {
@@ -200,8 +185,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
     final supabase = Supabase.instance.client;
     try {
-      final List<String> compatibleDonors =
-          BloodUtils.getCompatibleDonors(_neededBloodType!);
+      final List<String> compatibleDonors = BloodUtils.getCompatibleDonors(_neededBloodType!);
 
       final bool isUniversalReceiver = compatibleDonors.length >= 8;
 
@@ -215,25 +199,20 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
       if (mounted) {
         final List<dynamic> data = response as List<dynamic>;
-        final List<Map<String, dynamic>> fetchedDonors =
-            List<Map<String, dynamic>>.from(data);
+        final List<Map<String, dynamic>> fetchedDonors = List<Map<String, dynamic>>.from(data);
 
-        // --- NEW: Remove donors who donated recently (within 90 days) ---
         final now = DateTime.now();
         fetchedDonors.removeWhere((donor) {
-          if (donor['last_donation_date'] == null) return false; // Can donate
+          if (donor['last_donation_date'] == null) return false;
           try {
             final lastDate = DateTime.parse(donor['last_donation_date']);
             final readyDate = lastDate.add(const Duration(days: 90));
-            // If Today is BEFORE Ready Date, they cannot donate -> Remove them
             return now.isBefore(readyDate);
           } catch (e) {
             return false;
           }
         });
-        // -------------------------------------------------------------
 
-        // --- APPLY SMART SORTING ---
         SortingUtils.sortDonors(
           fetchedDonors,
           receiverBloodType: _neededBloodType,
@@ -297,9 +276,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
         title: Text("confirm_donation".tr()),
         content: Text("confirm_donation_body".tr(args: [donorName])),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text("cancel".tr())),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text("cancel".tr())),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -315,12 +292,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
       final supabase = Supabase.instance.client;
       final today = DateTime.now().toIso8601String().split('T')[0];
 
-      // 1. Update Donor Points & Date
-      final data = await supabase
-          .from('profiles')
-          .select('points')
-          .eq('id', donorId)
-          .single();
+      final data = await supabase.from('profiles').select('points').eq('id', donorId).single();
       int currentPoints = data['points'] ?? 0;
 
       await supabase.from('profiles').update({
@@ -328,7 +300,6 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
         'last_donation_date': today,
       }).eq('id', donorId);
 
-      // 2. INSERT into Donations Table
       await supabase.from('donations').insert({
         'donor_id': donorId,
         'status': 'completed',
@@ -341,15 +312,12 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
               content: Text("donation_confirmed".tr(args: [donorName])),
               backgroundColor: Colors.green),
         );
-        // Refresh to remove the donor from the list immediately
         _fetchDonors(loadMore: false);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("Error updating donor status"),
-              backgroundColor: Colors.red),
+          const SnackBar(content: Text("Error updating donor status"), backgroundColor: Colors.red),
         );
       }
     }
@@ -371,8 +339,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2)))),
+                        color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 20),
             UserCard(
               userData: user,
@@ -381,8 +348,8 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () => _confirmDonation(
-                  user['id'], user['email']?.split('@')[0] ?? 'Donor'),
+              onPressed: () =>
+                  _confirmDonation(user['id'], user['email']?.split('@')[0] ?? 'Donor'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
@@ -441,29 +408,23 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF2C2C2C)
-                          : AppTheme.surfaceWhite,
+                      color: isDark ? const Color(0xFF2C2C2C) : AppTheme.surfaceWhite,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                          color: isDark
-                              ? Colors.grey.shade700
-                              : Colors.grey.shade300),
+                      border:
+                          Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _neededBloodType,
                         hint: Text("select".tr()),
                         isExpanded: true,
-                        dropdownColor:
-                            isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                        dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
                         items: _allBloodTypes.map((type) {
                           return DropdownMenuItem(
                             value: type,
                             child: Text(
                               type,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                           );
                         }).toList(),
@@ -489,7 +450,9 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
           ),
         ],
       ),
+      // ✅ FIX: Added unique heroTag to prevent collision
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'receiver_map_fab',
         onPressed: () {
           setState(() {
             _isMapView = !_isMapView;
@@ -520,8 +483,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
                     Icon(
                       Icons.volunteer_activism,
                       size: 80,
-                      color:
-                          isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
                     ),
                     const SizedBox(height: 16),
                     Text(

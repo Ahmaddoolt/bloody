@@ -26,26 +26,22 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   bool _isMapView = false;
   List<Map<String, dynamic>> _feedItems = [];
 
-  // Loading States
   bool _isInitialLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
   bool _hasError = false;
 
-  // INCREASED LIMIT FOR BETTER LOCAL SORTING
   final int _limit = 50;
   int _offset = 0;
   final ScrollController _scrollController = ScrollController();
   Position? _currentPosition;
   Set<Marker> _markers = {};
 
-  // User Data
   String? _myBloodType;
   String? _myCity;
   int _myPoints = 0;
   String _statusMessage = "initializing".tr();
 
-  // Deferral & Timer State
   bool _isDeferred = false;
   DateTime? _lastDonationDate;
   DateTime? _nextEligibleDate;
@@ -112,8 +108,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
 
   void _onScroll() {
     if (_isMapView || _isDeferred || _hasError) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       _fetchData(loadMore: true);
     }
   }
@@ -191,20 +186,17 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
       _countdownTimer?.cancel();
 
       if (_myBloodType != null) {
-        final List<String> compatibleTypes =
-            BloodUtils.getCompatibleReceivers(_myBloodType!);
+        final List<String> compatibleTypes = BloodUtils.getCompatibleReceivers(_myBloodType!);
 
         final bool isUniversalDonor = _myBloodType == 'O-';
 
-        var query =
-            supabase.from('profiles').select().eq('user_type', 'receiver');
+        var query = supabase.from('profiles').select().eq('user_type', 'receiver');
 
         if (!isUniversalDonor) {
           query = query.inFilter('blood_type', compatibleTypes);
         }
 
-        final receiversResponse =
-            await query.range(_offset, _offset + _limit - 1);
+        final receiversResponse = await query.range(_offset, _offset + _limit - 1);
 
         final List<Map<String, dynamic>> receivers = (receiversResponse as List)
             .map((r) => <String, dynamic>{
@@ -213,15 +205,13 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
                 })
             .toList();
 
-        // --- APPLY SMART SORTING ---
         SortingUtils.sortNeedyUsers(
           receivers,
           donorBloodType: _myBloodType,
-          donorCity: _myCity, // Passing City
+          donorCity: _myCity,
           donorLat: _currentPosition?.latitude,
           donorLng: _currentPosition?.longitude,
         );
-        // ---------------------------
 
         if (mounted) {
           if (receivers.length < _limit) {
@@ -260,8 +250,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
           Marker(
             markerId: MarkerId('receiver_${item['id']}'),
             position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueViolet),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
             infoWindow: InfoWindow(
               title: 'Needs ${item['blood_type']}',
               snippet: 'Tap to call',
@@ -302,8 +291,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
                   const SizedBox(width: 4),
                   Text(
                     "my_points".tr(args: [_myPoints.toString()]),
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -318,9 +306,11 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
         ),
       ),
       body: _buildBody(),
+      // ✅ FIX: Added unique heroTag to prevent collision
       floatingActionButton: (_isDeferred || _isInitialLoading || _hasError)
           ? null
           : FloatingActionButton.extended(
+              heroTag: 'donor_map_fab',
               onPressed: () => setState(() => _isMapView = !_isMapView),
               backgroundColor: AppTheme.primaryRed,
               foregroundColor: Colors.white,
@@ -340,8 +330,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
           children: [
             const Icon(Icons.cloud_off, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            Text("error_loading".tr(),
-                style: const TextStyle(color: Colors.grey)),
+            Text("error_loading".tr(), style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () => _fetchData(),
@@ -378,8 +367,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.timer_rounded,
-                color: AppTheme.primaryRed, size: 80),
+            const Icon(Icons.timer_rounded, color: AppTheme.primaryRed, size: 80),
             const SizedBox(height: 24),
             Text(
               "thank_you_donor".tr(),
@@ -447,9 +435,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
             ElevatedButton(
                 onPressed: () async {
                   await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const SettingsScreen()));
+                      context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
                   _fetchData();
                 },
                 child: Text("update_settings".tr()))
@@ -474,14 +460,12 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.check_circle_outline,
-                            size: 80, color: Colors.green),
+                        const Icon(Icons.check_circle_outline, size: 80, color: Colors.green),
                         const SizedBox(height: 20),
                         Text(
                           "no_receivers_nearby".tr(),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 10),
                         Text(
@@ -505,8 +489,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
       color: AppTheme.primaryRed,
       child: ListView.builder(
         controller: _scrollController,
-        padding:
-            const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 80),
+        padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 80),
         itemCount: _feedItems.length + (_hasMore ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _feedItems.length) {
