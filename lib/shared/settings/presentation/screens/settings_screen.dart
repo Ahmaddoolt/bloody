@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/widgets/custom_loader.dart';
-// Note: We'll update the LoginScreen import path in the next phase. Adjust if needed.
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../notifications/presentation/screens/notifications_screen.dart';
 import '../../data/settings_service.dart';
