@@ -1,20 +1,21 @@
 // file: lib/main.dart
 import 'dart:async';
 
+import 'package:bloody/shared/auth/presentation/screens/login_screen.dart';
+import 'package:bloody/shared/auth/presentation/screens/onboarding_screen.dart';
+import 'package:bloody/shared/auth/presentation/screens/splash_screen.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// ✅ NEW CLEAN ARCHITECTURE IMPORTS
+import 'actors/admin/home/presentation/screens/admin_home_screen.dart';
 import 'core/constants/supabase_constants.dart';
 import 'core/layout/main_layout.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/app_logger.dart';
 import 'core/widgets/custom_loader.dart';
-import 'features/admin/screens/admin_home_screen.dart';
-import 'features/auth/screens/login_screen.dart';
-import 'features/onboarding/screens/onboarding_screen.dart';
-import 'features/splash/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -84,8 +85,6 @@ class _AuthGateState extends State<AuthGate> {
     _initializeAuth();
   }
 
-  /// 1. Sets up listener and checks initial state ONCE.
-  /// This prevents the MainLayout from being destroyed during navigation.
   Future<void> _initializeAuth() async {
     final prefs = await SharedPreferences.getInstance();
     _seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
@@ -105,9 +104,7 @@ class _AuthGateState extends State<AuthGate> {
     });
   }
 
-  /// 2. Fetches profile logic safely
   Future<void> _handleUserSession(User user) async {
-    // Check Admin
     if (user.email == 'adminbloody2026@gmail.com') {
       if (mounted) {
         setState(() {
@@ -119,7 +116,6 @@ class _AuthGateState extends State<AuthGate> {
       return;
     }
 
-    // Check Normal User Profile
     try {
       final data = await Supabase.instance.client
           .from('profiles')
@@ -139,7 +135,7 @@ class _AuthGateState extends State<AuthGate> {
       AppLogger.error("AuthGate._handleUserSession", e);
       if (mounted) {
         setState(() {
-          _userType = 'receiver'; // Fallback
+          _userType = 'receiver';
           _isAdmin = false;
           _isAuthenticated = true;
           _isLoading = false;
@@ -156,22 +152,9 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    // Show Loader only during the very first boot
-    if (_isLoading) {
-      return const Scaffold(body: CustomLoader());
-    }
-
-    // Unauthenticated -> Login / Onboarding
-    if (!_isAuthenticated) {
-      return _seenOnboarding ? const LoginScreen() : const OnboardingScreen();
-    }
-
-    // Authenticated -> Admin Route
-    if (_isAdmin) {
-      return const AdminHomeScreen();
-    }
-
-    // Authenticated -> User Route (Safe, will not rebuild on pop)
+    if (_isLoading) return const Scaffold(body: CustomLoader());
+    if (!_isAuthenticated) return _seenOnboarding ? const LoginScreen() : const OnboardingScreen();
+    if (_isAdmin) return const AdminHomeScreen();
     return MainLayout(userType: _userType);
   }
 }
