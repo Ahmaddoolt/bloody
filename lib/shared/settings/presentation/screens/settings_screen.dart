@@ -1,4 +1,4 @@
-// file: lib/shared/features/settings/presentation/screens/settings_screen.dart
+// file: lib/shared/settings/presentation/screens/settings_screen.dart
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
@@ -6,11 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../../core/theme/app_theme.dart';
-import '../../../../../core/widgets/custom_loader.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../notifications/presentation/screens/notifications_screen.dart';
 import '../../data/settings_service.dart';
-import '../widgets/donation_history_list.dart';
+import 'donation_history_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -30,8 +29,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   DateTime? _selectedDate;
 
   bool _isLoading = false;
-  bool _isHistoryLoading = false;
-  List<Map<String, dynamic>> _donationHistory = [];
 
   bool _isDeferred = false;
   DateTime? _lastDonationDate;
@@ -41,11 +38,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _isDonor = true;
   String _priorityStatus = 'none';
-  bool _isRequestingPriority = false;
+
+  bool _isAvailable = true;
+  bool _isTogglingAvailability = false;
 
   bool get _isArabic => context.locale.languageCode == 'ar';
-
   final String _userId = Supabase.instance.client.auth.currentUser!.id;
+
   final List<String> _bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
   final List<String> _syrianCities = [
     'Damascus',
@@ -61,7 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Deir ez-Zor',
     'Al-Hasakah',
     'Raqqa',
-    'Rif Dimashq'
+    'Rif Dimashq',
   ];
 
   @override
@@ -78,23 +77,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final days = duration.inDays.toString();
-    final hours = twoDigits(duration.inHours.remainder(24));
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$days:$hours:$minutes:$seconds';
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  String _formatDuration(Duration d) {
+    String pad(int n) => n.toString().padLeft(2, '0');
+    return '${d.inDays}d  ${pad(d.inHours.remainder(24))}h'
+        '  ${pad(d.inMinutes.remainder(60))}m'
+        '  ${pad(d.inSeconds.remainder(60))}s';
   }
 
   void _startCountdownTimer() {
     _countdownTimer?.cancel();
     if (_nextEligibleDate == null) return;
-
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       final remaining = _nextEligibleDate!.difference(DateTime.now());
       if (remaining.isNegative) {
-        timer.cancel();
+        t.cancel();
         if (mounted)
           setState(() {
             _isDeferred = false;
@@ -110,9 +108,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_lastDonationDate == null || _nextEligibleDate == null) return 0;
     final total = _nextEligibleDate!.difference(_lastDonationDate!).inSeconds;
     final elapsed = DateTime.now().difference(_lastDonationDate!).inSeconds;
-    if (total <= 0) return 1.0;
-    return (elapsed / total).clamp(0.0, 1.0);
+    return total <= 0 ? 1.0 : (elapsed / total).clamp(0.0, 1.0);
   }
+
+  // ── Data ───────────────────────────────────────────────────────────────────
 
   Future<void> _loadProfile() async {
     final data = await _service.getProfile(_userId);
@@ -124,78 +123,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (_syrianCities.contains(data['city'])) _selectedCity = data['city'];
         if (data['birth_date'] != null) _selectedDate = DateTime.tryParse(data['birth_date']);
 
-        _isDonor = (data['user_type'] == 'donor');
+        _isDonor = data['user_type'] == 'donor';
         _priorityStatus = data['priority_status'] ?? 'none';
+        _isAvailable = data['is_available'] ?? true;
 
-        if (_isDonor) {
-          _fetchDonationHistory();
-          if (data['last_donation_date'] != null) {
-            _lastDonationDate = DateTime.parse(data['last_donation_date']);
-            _nextEligibleDate = _lastDonationDate!.add(const Duration(days: 90));
-            if (_nextEligibleDate!.isAfter(DateTime.now())) {
-              _isDeferred = true;
-              _startCountdownTimer();
-            } else {
-              _isDeferred = false;
-            }
-          }
+        if (_isDonor && data['last_donation_date'] != null) {
+          _lastDonationDate = DateTime.parse(data['last_donation_date']);
+          _nextEligibleDate = _lastDonationDate!.add(const Duration(days: 90));
+          _isDeferred = _nextEligibleDate!.isAfter(DateTime.now());
+          if (_isDeferred) _startCountdownTimer();
         }
       });
     }
   }
 
-  Future<void> _fetchDonationHistory() async {
-    setState(() => _isHistoryLoading = true);
-    final history = await _service.getDonationHistory(_userId);
-    if (mounted) {
-      setState(() {
-        _donationHistory = history;
-        _isHistoryLoading = false;
-      });
-    }
-  }
-
-  Future<void> _requestHighPriority() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Request High Priority'),
-        content: const Text(
-            'You are requesting high-priority status. An admin will review your request. Proceed?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('cancel'.tr(), style: const TextStyle(color: Colors.grey))),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryRed, foregroundColor: Colors.white),
-              child: const Text('Submit Request')),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isRequestingPriority = true);
-    final success = await _service.requestHighPriority(_userId);
-
-    if (mounted) {
-      setState(() {
-        if (success) _priorityStatus = 'pending';
-        _isRequestingPriority = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success
-              ? 'Priority request submitted. Awaiting admin approval.'
-              : 'Error submitting request'),
-          backgroundColor: success ? Colors.orange : Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
+  Future<void> _handleAvailabilityToggle(bool newValue) async {
+    if (_isTogglingAvailability) return;
+    setState(() {
+      _isAvailable = newValue;
+      _isTogglingAvailability = true;
+    });
+    final result = await _service.toggleAvailability(userId: _userId, isAvailable: newValue);
+    if (!mounted) return;
+    if (result == null) {
+      setState(() => _isAvailable = !newValue);
+      _showSnack('availability_update_error'.tr(), Colors.red);
+    } else {
+      _showSnack(
+        newValue ? 'status_online'.tr() : 'status_offline'.tr(),
+        newValue ? const Color(0xFF2E7D32) : Colors.grey[700]!,
       );
     }
+    setState(() => _isTogglingAvailability = false);
   }
 
   Future<void> _pickDate() async {
@@ -218,18 +177,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
       city: _selectedCity,
       birthDate: _selectedDate?.toIso8601String().split('T')[0],
     );
-
     if (mounted) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(success ? 'profile_updated'.tr() : 'Error updating profile'),
-            backgroundColor: success ? null : Colors.red),
+      _showSnack(
+        success ? 'profile_updated'.tr() : 'error_updating_profile'.tr(),
+        success ? const Color(0xFF2E7D32) : Colors.red,
       );
     }
   }
 
   Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('log_out'.tr()),
+        content: Text('logout_confirm'.tr()),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('cancel'.tr(), style: const TextStyle(color: Colors.grey))),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryRed,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: Text('log_out'.tr())),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     await _service.logout();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -237,128 +215,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _showSnack(String msg, Color bg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500)),
+      backgroundColor: bg,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+    ));
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: AppTheme.themeNotifier,
-      builder: (context, currentMode, child) {
-        final bool isDarkMode = currentMode == ThemeMode.dark;
-        final dropdownColor = isDarkMode ? const Color(0xFF2C2C2C) : Colors.white;
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        final dropdownColor = isDark ? AppTheme.darkCard : Colors.white;
 
         return Scaffold(
-          appBar: AppBar(
-            title: Text('settings'.tr()),
-            actions: [
-              IconButton(
-                onPressed: () => Navigator.push(
-                    context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
-                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                tooltip: 'Notifications',
-              ),
-              IconButton(
-                  onPressed: _handleLogout,
-                  icon: const Icon(Icons.logout, color: Colors.white),
-                  tooltip: 'log_out'.tr()),
-            ],
-          ),
+          backgroundColor: isDark ? AppTheme.darkBackground : const Color(0xFFF5F6FA),
+          appBar: _buildAppBar(isDark),
           body: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 48),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_isDonor) ...[_buildEligibilityCard(isDarkMode), const SizedBox(height: 24)],
-                if (!_isDonor) ...[_buildPriorityCard(isDarkMode), const SizedBox(height: 24)],
-                Text('app_settings'.tr(),
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode,
-                      color: AppTheme.primaryRed),
-                  title: Text('dark_mode'.tr()),
-                  trailing: Switch(
-                      value: isDarkMode,
-                      activeColor: AppTheme.primaryRed,
-                      onChanged: (val) =>
-                          AppTheme.saveTheme(val ? ThemeMode.dark : ThemeMode.light)),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.language, color: AppTheme.primaryRed),
-                  title: Text('arabic_lang'.tr()),
-                  trailing: Switch(
-                      value: _isArabic,
-                      activeColor: AppTheme.primaryRed,
-                      onChanged: (val) async {
-                        await context.setLocale(val ? const Locale('ar') : const Locale('en'));
-                        setState(() {});
-                      }),
-                ),
-                const Divider(height: 40),
-                Text('my_info'.tr(),
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                TextField(
-                    controller: _usernameController,
-                    decoration: InputDecoration(
-                        labelText: 'username'.tr(), prefixIcon: const Icon(Icons.person))),
-                const SizedBox(height: 16),
-                TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    decoration: InputDecoration(
-                        labelText: 'phone_number'.tr(), prefixIcon: const Icon(Icons.phone))),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                    value: _selectedCity,
-                    dropdownColor: dropdownColor,
-                    items: _syrianCities
-                        .map((city) => DropdownMenuItem(value: city, child: Text(city.tr())))
-                        .toList(),
-                    onChanged: (val) => setState(() => _selectedCity = val),
-                    decoration: const InputDecoration(
-                        labelText: 'City', prefixIcon: Icon(Icons.location_city))),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                    value: _selectedBloodType,
-                    dropdownColor: dropdownColor,
-                    items: _bloodTypes
-                        .map((type) => DropdownMenuItem(value: type, child: Text(type)))
-                        .toList(),
-                    onChanged: (val) => setState(() => _selectedBloodType = val),
-                    decoration: InputDecoration(
-                        labelText: 'blood_type'.tr(), prefixIcon: const Icon(Icons.bloodtype))),
-                const SizedBox(height: 16),
-                InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                        decoration: InputDecoration(
-                            labelText: 'date_of_birth'.tr(),
-                            prefixIcon: const Icon(Icons.calendar_today)),
-                        child: Text(
-                            _selectedDate == null
-                                ? 'select_date'.tr()
-                                : _selectedDate!.toIso8601String().split('T')[0],
-                            style: TextStyle(
-                                color: _selectedDate == null
-                                    ? (isDarkMode ? Colors.white54 : Colors.grey)
-                                    : (isDarkMode ? Colors.white : Colors.black))))),
-                const SizedBox(height: 24),
-                SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                        onPressed: _isLoading ? null : _updateProfile,
-                        child: _isLoading
-                            ? const CustomLoader(size: 20, color: Colors.white)
-                            : Text('update_info'.tr()))),
-                const SizedBox(height: 40),
+                // Profile header card (sits flush under the appbar)
+                _buildProfileHeader(isDark),
+                const SizedBox(height: 20),
+
+                // Status cards
                 if (_isDonor) ...[
-                  Text('donation_history'.tr(),
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  DonationHistoryList(history: _donationHistory, isLoading: _isHistoryLoading),
-                  const SizedBox(height: 40),
+                  _buildEligibilityCard(isDark),
+                  const SizedBox(height: 12),
+                  _buildAvailabilityCard(isDark),
+                  const SizedBox(height: 20),
                 ],
+                if (!_isDonor) ...[
+                  _buildPriorityStatusCard(isDark),
+                  const SizedBox(height: 20),
+                ],
+
+                _buildSectionHeader('app_settings'.tr()),
+                const SizedBox(height: 12),
+                _buildPreferencesCard(isDark),
+                const SizedBox(height: 24),
+
+                _buildSectionHeader('my_info'.tr()),
+                const SizedBox(height: 12),
+                _buildInfoCard(isDark, dropdownColor),
+                const SizedBox(height: 24),
+
+                _buildSaveButton(),
               ],
             ),
           ),
@@ -367,131 +278,655 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildPriorityCard(bool isDark) {
-    final isPending = _priorityStatus == 'pending';
-    final isApproved = _priorityStatus == 'high';
-    final isRejected = _priorityStatus == 'rejected';
+  // ─── AppBar ────────────────────────────────────────────────────────────────
 
-    Color cardColor = Colors.blue;
-    IconData cardIcon = Icons.priority_high_rounded;
-    String cardTitle = 'Request High Priority';
-    String cardSubtitle =
-        'If you urgently need blood, request high-priority status for faster assistance.';
+  PreferredSizeWidget _buildAppBar(bool isDark) {
+    return AppBar(
+      backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.primaryRed,
+      foregroundColor: Colors.white,
+      centerTitle: true,
+      elevation: 0,
+      title: Text(
+        'settings'.tr(),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
+          color: Colors.white,
+        ),
+      ),
+      actions: [
+        // Donation history — donors only
+        if (_isDonor)
+          IconButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => DonationHistoryScreen(userId: _userId)),
+            ),
+            icon: const Icon(Icons.volunteer_activism_rounded, color: Colors.white),
+            tooltip: 'donation_history'.tr(),
+          ),
+        IconButton(
+          onPressed: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+          icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+          tooltip: 'Notifications',
+        ),
+        IconButton(
+          onPressed: _handleLogout,
+          icon: const Icon(Icons.logout_rounded, color: Colors.white),
+          tooltip: 'log_out'.tr(),
+        ),
+        const SizedBox(width: 4),
+      ],
+      // Rounded bottom corners so it blends into the profile card
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(20),
+        ),
+      ),
+    );
+  }
 
-    if (isApproved) {
-      cardColor = AppTheme.primaryRed;
-      cardIcon = Icons.star_rounded;
-      cardTitle = 'High Priority Approved ⭐';
-      cardSubtitle = 'You have been granted high priority status by an admin.';
-    } else if (isPending) {
-      cardColor = Colors.orange;
-      cardIcon = Icons.hourglass_top_rounded;
-      cardTitle = 'Request Pending Review';
-      cardSubtitle = 'Your priority request is awaiting admin approval.';
-    } else if (isRejected) {
-      cardColor = Colors.grey;
-      cardIcon = Icons.cancel_outlined;
-      cardTitle = 'Request Rejected';
-      cardSubtitle = 'Your previous request was rejected. You may submit a new one.';
-    }
+  // ─── Profile header card ───────────────────────────────────────────────────
+
+  Widget _buildProfileHeader(bool isDark) {
+    final username = _usernameController.text.isNotEmpty
+        ? _usernameController.text
+        : Supabase.instance.client.auth.currentUser?.email?.split('@')[0] ?? '—';
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-          color: cardColor.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cardColor.withOpacity(0.3))),
+      decoration: _cardDecoration(isDark),
+      child: Row(
+        children: [
+          // Avatar circle
+          Container(
+            width: 60,
+            height: 60,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.primaryRed, AppTheme.darkRed],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                username.isNotEmpty ? username[0].toUpperCase() : '?',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  username,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    // Blood type chip
+                    _SmallChip(
+                      label: _selectedBloodType ?? '—',
+                      icon: Icons.bloodtype_rounded,
+                      color: AppTheme.primaryRed,
+                      isDark: isDark,
+                    ),
+                    const SizedBox(width: 8),
+                    // City chip
+                    if (_selectedCity != null)
+                      _SmallChip(
+                        label: _selectedCity!,
+                        icon: Icons.location_on_rounded,
+                        color: Colors.blue.shade700,
+                        isDark: isDark,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Role badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: _isDonor ? AppTheme.primaryRed.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color:
+                    _isDonor ? AppTheme.primaryRed.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
+              ),
+            ),
+            child: Text(
+              _isDonor ? 'donor'.tr() : 'receiver'.tr(),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: _isDonor ? AppTheme.primaryRed : Colors.blue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Eligibility card ──────────────────────────────────────────────────────
+
+  Widget _buildEligibilityCard(bool isDark) {
+    final color = _isDeferred ? const Color(0xFFE65100) : const Color(0xFF2E7D32);
+    final icon = _isDeferred ? Icons.hourglass_bottom_rounded : Icons.check_circle_rounded;
+    final label = _isDeferred ? 'donation_deferral_notice'.tr() : 'ready_to_donate'.tr();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(isDark),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                  width: 44,
-                  height: 44,
-                  decoration:
-                      BoxDecoration(color: cardColor.withOpacity(0.15), shape: BoxShape.circle),
-                  child: Icon(cardIcon, color: cardColor, size: 24)),
-              const SizedBox(width: 14),
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 26),
+              ),
+              const SizedBox(width: 16),
               Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(cardTitle,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: cardColor)),
-                const SizedBox(height: 4),
-                Text(cardSubtitle,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    'eligibility_status'.tr(),
                     style: TextStyle(
-                        fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[700]))
-              ])),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: isDark ? Colors.white : Colors.black87),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(label,
+                      style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500)),
+                ]),
+              ),
             ],
           ),
-          if (!isApproved && !isPending) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                    onPressed: _isRequestingPriority ? null : _requestHighPriority,
-                    icon: _isRequestingPriority
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.send_rounded, size: 18),
-                    label: Text(_isRequestingPriority ? 'Submitting...' : 'Request High Priority'),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: cardColor,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
+          if (_isDeferred && _remainingTime.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: _calculateProgress(),
+                backgroundColor: color.withOpacity(0.15),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 8,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(0.2), width: 1),
+              ),
+              child: Center(
+                child: Text(
+                  _remainingTime,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                    fontFamily: 'monospace',
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text('time_remaining'.tr(), style: TextStyle(fontSize: 11, color: Colors.grey[500])),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildEligibilityCard(bool isDark) {
-    final statusColor = _isDeferred ? Colors.orange : Colors.green;
-    final statusIcon = _isDeferred ? Icons.timer : Icons.check_circle;
-    final statusText = _isDeferred ? 'donation_deferral_notice'.tr() : 'ready_to_donate'.tr();
+  // ─── Availability card ─────────────────────────────────────────────────────
+
+  Widget _buildAvailabilityCard(bool isDark) {
+    const activeColor = Color(0xFF2E7D32);
+    const inactiveColor = Color(0xFF757575);
+    final color = _isAvailable ? activeColor : inactiveColor;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.35), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(isDark ? 0.12 : 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+                child: Icon(
+                  _isAvailable ? Icons.wifi_tethering_rounded : Icons.wifi_tethering_off_rounded,
+                  color: color,
+                  size: 26,
+                ),
+              ),
+              if (_isAvailable)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    width: 13,
+                    height: 13,
+                    decoration: BoxDecoration(
+                      color: activeColor,
+                      shape: BoxShape.circle,
+                      border:
+                          Border.all(color: isDark ? AppTheme.darkCard : Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _isAvailable ? 'availability_online'.tr() : 'availability_offline'.tr(),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 15, color: color, height: 1.4),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _isAvailable ? 'availability_online_desc'.tr() : 'availability_offline_desc'.tr(),
+                  style: TextStyle(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 52,
+            height: 48,
+            child: Center(
+              child: _isTogglingAvailability
+                  ? SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: color))
+                  : Switch(
+                      value: _isAvailable,
+                      activeColor: activeColor,
+                      activeTrackColor: activeColor.withOpacity(0.3),
+                      inactiveThumbColor: inactiveColor,
+                      inactiveTrackColor: inactiveColor.withOpacity(0.2),
+                      onChanged: _handleAvailabilityToggle,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Priority status card ──────────────────────────────────────────────────
+
+  Widget _buildPriorityStatusCard(bool isDark) {
+    final isPending = _priorityStatus == 'pending';
+    final isApproved = _priorityStatus == 'high';
+    final isRejected = _priorityStatus == 'rejected';
+
+    final Color color;
+    final IconData icon;
+    final String title;
+    final String subtitle;
+
+    if (isApproved) {
+      color = AppTheme.primaryRed;
+      icon = Icons.star_rounded;
+      title = 'priority_approved'.tr();
+      subtitle = 'priority_approved_desc'.tr();
+    } else if (isPending) {
+      color = const Color(0xFFE65100);
+      icon = Icons.hourglass_top_rounded;
+      title = 'priority_pending'.tr();
+      subtitle = 'priority_pending_desc'.tr();
+    } else if (isRejected) {
+      color = const Color(0xFF616161);
+      icon = Icons.cancel_outlined;
+      title = 'priority_rejected'.tr();
+      subtitle = 'priority_rejected_desc'.tr();
+    } else {
+      color = Colors.blue.shade700;
+      icon = Icons.shield_outlined;
+      title = 'priority_none'.tr();
+      subtitle = 'priority_none_desc'.tr();
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-          color: statusColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: statusColor.withOpacity(0.3))),
+      decoration: _cardDecoration(isDark),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 26),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color)),
+              const SizedBox(height: 4),
+              Text(subtitle,
+                  style: TextStyle(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600])),
+              const SizedBox(height: 8),
+              Row(children: [
+                Icon(Icons.admin_panel_settings_outlined, size: 13, color: Colors.grey[500]),
+                const SizedBox(width: 4),
+                Text('admin_managed'.tr(),
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey[500], fontStyle: FontStyle.italic)),
+              ]),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Preferences card ──────────────────────────────────────────────────────
+
+  Widget _buildPreferencesCard(bool isDark) {
+    final isDarkMode = AppTheme.themeNotifier.value == ThemeMode.dark;
+    return Container(
+      decoration: _cardDecoration(isDark),
       child: Column(
         children: [
-          Row(
-            children: [
-              Icon(statusIcon, color: statusColor, size: 32),
-              const SizedBox(width: 16),
-              Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('eligibility_status'.tr(),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 4),
-                Text(statusText, style: TextStyle(color: statusColor, fontSize: 13))
-              ])),
-            ],
+          _buildToggleRow(
+            icon: isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+            iconColor: isDarkMode ? const Color(0xFF90CAF9) : const Color(0xFFFFB74D),
+            label: 'dark_mode'.tr(),
+            subtitle: isDarkMode ? 'theme_dark_desc'.tr() : 'theme_light_desc'.tr(),
+            value: isDarkMode,
+            onChanged: (val) => AppTheme.saveTheme(val ? ThemeMode.dark : ThemeMode.light),
           ),
-          if (_isDeferred && _remainingTime.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            LinearProgressIndicator(
-                value: _calculateProgress(),
-                backgroundColor: Colors.grey.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4)),
-            const SizedBox(height: 12),
-            Text(_remainingTime,
+          Divider(
+              height: 1,
+              indent: 20,
+              endIndent: 20,
+              color: isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.12)),
+          _buildToggleRow(
+            icon: Icons.language_rounded,
+            iconColor: const Color(0xFF42A5F5),
+            label: 'arabic_lang'.tr(),
+            subtitle: _isArabic ? 'العربية مفعّلة' : 'English enabled',
+            value: _isArabic,
+            onChanged: (val) async {
+              await context.setLocale(val ? const Locale('ar') : const Locale('en'));
+              setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToggleRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final isDark = AppTheme.themeNotifier.value == ThemeMode.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87)),
+              Text(subtitle,
+                  style:
+                      TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+            ]),
+          ),
+          Switch(value: value, activeColor: AppTheme.primaryRed, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+
+  // ─── Info card ─────────────────────────────────────────────────────────────
+
+  Widget _buildInfoCard(bool isDark, Color dropdownColor) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(isDark),
+      child: Column(
+        children: [
+          _buildTextField(
+              controller: _usernameController, label: 'username'.tr(), icon: Icons.person_rounded),
+          const SizedBox(height: 16),
+          _buildTextField(
+              controller: _phoneController,
+              label: 'phone_number'.tr(),
+              icon: Icons.phone_rounded,
+              keyboardType: TextInputType.phone),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedCity,
+            dropdownColor: dropdownColor,
+            decoration: InputDecoration(
+              labelText: 'City',
+              prefixIcon: const Icon(Icons.location_city_rounded),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            items:
+                _syrianCities.map((c) => DropdownMenuItem(value: c, child: Text(c.tr()))).toList(),
+            onChanged: (val) => setState(() => _selectedCity = val),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedBloodType,
+            dropdownColor: dropdownColor,
+            decoration: InputDecoration(
+              labelText: 'blood_type'.tr(),
+              prefixIcon: const Icon(Icons.bloodtype_rounded),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            items: _bloodTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+            onChanged: (val) => setState(() => _selectedBloodType = val),
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: _pickDate,
+            borderRadius: BorderRadius.circular(12),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'date_of_birth'.tr(),
+                prefixIcon: const Icon(Icons.calendar_today_rounded),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              child: Text(
+                _selectedDate == null
+                    ? 'select_date'.tr()
+                    : _selectedDate!.toIso8601String().split('T')[0],
                 style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: statusColor,
-                    fontFamily: 'monospace')),
-            Text('time_remaining'.tr(), style: TextStyle(fontSize: 10, color: Colors.grey[600])),
-          ],
+                    color: _selectedDate == null
+                        ? (isDark ? Colors.white38 : Colors.grey[500])
+                        : null),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _updateProfile,
+        icon: _isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+            : const Icon(Icons.save_rounded, size: 20),
+        label: Text('update_info'.tr(),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryRed,
+          foregroundColor: Colors.white,
+          elevation: 3,
+          shadowColor: AppTheme.primaryRed.withOpacity(0.35),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    );
+  }
+
+  // ─── Section header ────────────────────────────────────────────────────────
+
+  Widget _buildSectionHeader(String title) {
+    final isDark = AppTheme.themeNotifier.value == ThemeMode.dark;
+    return Row(children: [
+      Container(
+          width: 4,
+          height: 20,
+          decoration:
+              BoxDecoration(color: AppTheme.primaryRed, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(width: 10),
+      Text(title,
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87)),
+    ]);
+  }
+
+  BoxDecoration _cardDecoration(bool isDark) => BoxDecoration(
+        color: isDark ? AppTheme.darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.25 : 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      );
+}
+
+// ── Helper chip widget ────────────────────────────────────────────────────────
+
+class _SmallChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool isDark;
+
+  const _SmallChip({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.25), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 11),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );

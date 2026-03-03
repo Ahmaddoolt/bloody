@@ -1,4 +1,4 @@
-// file: lib/actors/donor/features/leaderboard/presentation/screens/leaderboard_screen.dart
+// file: lib/actors/donor/leaderboard/presentation/screens/leaderboard_screen.dart
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -47,7 +47,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   Future<void> _fetchLeaders({bool loadMore = false}) async {
     if (loadMore && (_isLoadingMore || !_hasMore)) return;
-
     setState(() {
       if (loadMore) {
         _isLoadingMore = true;
@@ -58,13 +57,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         _leaders.clear();
       }
     });
-
     try {
       final data = await _service.fetchTopDonors(offset: _offset, limit: _limit);
-
       if (mounted) {
         if (data.length < _limit) _hasMore = false;
-
         setState(() {
           _leaders.addAll(data);
           _offset += _limit;
@@ -72,43 +68,48 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           _isInitialLoading = false;
         });
       }
-    } catch (e) {
-      if (mounted) {
+    } catch (_) {
+      if (mounted)
         setState(() {
           _isLoadingMore = false;
           _isInitialLoading = false;
         });
-      }
     }
   }
 
   Future<void> _makeCall(String? phone) async {
     if (phone == null || phone.isEmpty) return;
-    final Uri launchUri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(launchUri)) await launchUrl(launchUri);
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) launchUrl(uri);
   }
 
-  void _showDonorDetails(Map<String, dynamic> donor) {
-    final String email = donor['email'] ?? 'unknown'.tr();
+  void _showDonorDetails(Map<String, dynamic> donor, int rank) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final String email = donor['email'] ?? 'unknown';
     final String name = email.split('@')[0];
     final String bloodType = donor['blood_type'] ?? '?';
     final String? phone = donor['phone'];
     final int points = (donor['points'] as num? ?? 0).toInt();
 
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color modalBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final Color textColor = isDark ? Colors.white : Colors.black;
+    final Color rankColor = rank == 1
+        ? const Color(0xFFFFD700)
+        : rank == 2
+            ? const Color(0xFFC0C0C0)
+            : rank == 3
+                ? const Color(0xFFCD7F32)
+                : AppTheme.primaryRed;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (_) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         decoration: BoxDecoration(
-          color: modalBg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          color: isDark ? AppTheme.darkCard : Colors.white,
+          borderRadius: BorderRadius.circular(24),
         ),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 30),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -117,64 +118,300 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
-                    color: isDark ? Colors.grey[700] : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2))),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                  shape: BoxShape.circle, border: Border.all(color: AppTheme.primaryRed, width: 2)),
-              child: CircleAvatar(
-                radius: 35,
-                backgroundColor: AppTheme.primaryRed,
-                child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: FittedBox(
-                        child: Text(bloodType,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)))),
-              ),
+                    color: Colors.grey.withOpacity(0.35), borderRadius: BorderRadius.circular(2))),
+            Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [rankColor, rankColor.withOpacity(0.6)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                          color: rankColor.withOpacity(0.4),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6)),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(bloodType,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)),
+                  ),
+                ),
+                if (rank <= 3)
+                  Positioned(
+                    bottom: -6,
+                    right: -6,
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isDark ? AppTheme.darkCard : Colors.white,
+                          border: Border.all(color: rankColor, width: 1.5)),
+                      child: Center(
+                          child: Text('#$rank',
+                              style: TextStyle(
+                                  fontSize: 10, fontWeight: FontWeight.bold, color: rankColor))),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(name,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
-            const SizedBox(height: 8),
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87)),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               decoration: BoxDecoration(
-                  color: AppTheme.gold.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.gold.withOpacity(0.5))),
+                color: AppTheme.gold.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.gold.withOpacity(0.4)),
+              ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.bolt, color: AppTheme.gold, size: 20),
+                const Icon(Icons.bolt_rounded, color: AppTheme.gold, size: 18),
                 const SizedBox(width: 6),
-                Text("$points ${'points'.tr()}",
-                    style: const TextStyle(color: AppTheme.gold, fontWeight: FontWeight.bold))
+                Text('$points ${'points'.tr()}',
+                    style: const TextStyle(
+                        color: AppTheme.gold, fontWeight: FontWeight.bold, fontSize: 15)),
               ]),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 28),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  child: Text('close'.tr(),
+                      style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: phone != null ? () => _makeCall(phone) : null,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  icon: const Icon(Icons.phone_rounded, size: 18),
+                  label: Text(
+                    phone != null ? 'call_donor'.tr() : 'no_phone_available'.tr(),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? AppTheme.darkBackground : const Color(0xFFF5F6FA),
+      appBar: _buildAppBar(isDark),
+      body: _isInitialLoading
+          ? const CustomLoader()
+          : _leaders.isEmpty
+              ? _buildEmptyState(isDark)
+              : RefreshIndicator(
+                  onRefresh: () async => _fetchLeaders(loadMore: false),
+                  color: AppTheme.gold,
+                  child: CustomScrollView(
+                    controller: _scrollController,
+                    slivers: [
+                      _buildPodiumSection(isDark),
+                      _buildRankList(isDark),
+                      if (_hasMore)
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: CustomLoader(size: 28),
+                          ),
+                        ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  // ─── AppBar ────────────────────────────────────────────────────────────────
+
+  PreferredSizeWidget _buildAppBar(bool isDark) {
+    return AppBar(
+      backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.primaryRed,
+      foregroundColor: Colors.white,
+      centerTitle: true,
+      elevation: 0,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.emoji_events_rounded, color: AppTheme.gold, size: 22),
+          const SizedBox(width: 8),
+          Text(
+            'legend_donors'.tr(),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: AppTheme.gold.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.emoji_events_rounded, size: 40, color: AppTheme.gold),
+          ),
+          const SizedBox(height: 20),
+          Text("no_legends".tr(),
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white70 : Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  // ─── Podium Section ────────────────────────────────────────────────────────
+
+  Widget _buildPodiumSection(bool isDark) {
+    if (_leaders.isEmpty) return const SliverToBoxAdapter(child: SizedBox());
+
+    final top1 = _leaders[0];
+    final top2 = _leaders.length > 1 ? _leaders[1] : null;
+    final top3 = _leaders.length > 2 ? _leaders[2] : null;
+
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+        decoration: BoxDecoration(
+          // Subtle card background — no giant gradient
+          color: isDark ? AppTheme.darkCard : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primaryRed.withOpacity(isDark ? 0.15 : 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Section label
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Container(
+                  width: 28,
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: AppTheme.gold.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'top_donors'.tr(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                    color: isDark ? Colors.grey[400] : Colors.grey[500],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 28,
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: AppTheme.gold.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            // Podium row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (top2 != null)
+                  Expanded(
+                      child: _PodiumCard(
+                    donor: top2,
+                    rank: 2,
+                    rankColor: const Color(0xFFC0C0C0),
+                    isDark: isDark,
+                    onTap: () => _showDonorDetails(top2, 2),
+                  )),
                 Expanded(
-                    child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                        child: Text("close".tr(),
-                            style: TextStyle(color: isDark ? Colors.white : Colors.black)))),
-                const SizedBox(width: 16),
-                Expanded(
-                    child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                        onPressed: phone != null ? () => _makeCall(phone) : null,
-                        icon: const Icon(Icons.phone),
-                        label: Text(phone != null ? "call_donor".tr() : "no_phone_available".tr(),
-                            style: const TextStyle(fontWeight: FontWeight.bold)))),
+                  child: Transform.translate(
+                    offset: const Offset(0, -20),
+                    child: _PodiumCard(
+                      donor: top1,
+                      rank: 1,
+                      rankColor: const Color(0xFFFFD700),
+                      isDark: isDark,
+                      onTap: () => _showDonorDetails(top1, 1),
+                      isWinner: true,
+                    ),
+                  ),
+                ),
+                if (top3 != null)
+                  Expanded(
+                      child: _PodiumCard(
+                    donor: top3,
+                    rank: 3,
+                    rankColor: const Color(0xFFCD7F32),
+                    isDark: isDark,
+                    onTap: () => _showDonorDetails(top3, 3),
+                  )),
               ],
             ),
           ],
@@ -183,148 +420,257 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+  // ─── Rank List ─────────────────────────────────────────────────────────────
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
-      body: _isInitialLoading
-          ? const CustomLoader()
-          : _leaders.isEmpty
-              ? _buildEmptyState(isDark)
-              : RefreshIndicator(
-                  onRefresh: () async => await _fetchLeaders(loadMore: false),
-                  color: AppTheme.primaryRed,
-                  child: CustomScrollView(
-                    controller: _scrollController,
-                    slivers: [
-                      _buildAppBar(isDark),
-                      _buildPodiumSection(isDark),
-                      _buildRestList(isDark)
-                    ],
-                  ),
-                ),
-    );
-  }
+  Widget _buildRankList(bool isDark) {
+    if (_leaders.length <= 3) return const SliverToBoxAdapter(child: SizedBox());
 
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
-        child: Text("no_legends".tr(), style: TextStyle(fontSize: 18, color: Colors.grey)));
-  }
-
-  SliverAppBar _buildAppBar(bool isDark) {
-    return SliverAppBar(
-      pinned: true,
-      expandedHeight: 80,
-      backgroundColor: AppTheme.darkRed,
-      elevation: 0,
-      title: Text('legend_donors'.tr(),
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-      centerTitle: true,
-      flexibleSpace: Container(
-          decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [AppTheme.primaryRed, AppTheme.darkRed],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter))),
-    );
-  }
-
-  Widget _buildPodiumSection(bool isDark) {
-    if (_leaders.isEmpty) return const SliverToBoxAdapter(child: SizedBox());
-
-    final top1 = _leaders.isNotEmpty ? _leaders[0] : null;
-    final top2 = _leaders.length > 1 ? _leaders[1] : null;
-    final top3 = _leaders.length > 2 ? _leaders[2] : null;
-
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        decoration: const BoxDecoration(
-            gradient: LinearGradient(
-                colors: [AppTheme.darkRed, AppTheme.primaryRed],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter),
-            borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(40), bottomRight: Radius.circular(40))),
-        padding: const EdgeInsets.only(bottom: 50, top: 20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (top2 != null)
-              Expanded(child: _buildPodiumWinner(top2, 2, const Color(0xFFC0C0C0), isDark)),
-            if (top1 != null)
-              Expanded(
-                  flex: 1,
-                  child: Transform.translate(
-                      offset: const Offset(0, -25),
-                      child: _buildPodiumWinner(top1, 1, const Color(0xFFFFD700), isDark))),
-            if (top3 != null)
-              Expanded(child: _buildPodiumWinner(top3, 3, const Color(0xFFCD7F32), isDark)),
-          ],
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (ctx, index) {
+            final realIndex = index + 3;
+            if (realIndex >= _leaders.length) return null;
+            return _RankListItem(
+              donor: _leaders[realIndex],
+              rank: realIndex + 1,
+              isDark: isDark,
+              onTap: () => _showDonorDetails(_leaders[realIndex], realIndex + 1),
+            );
+          },
+          childCount: _leaders.length - 3,
         ),
       ),
     );
   }
+}
 
-  Widget _buildPodiumWinner(Map<String, dynamic> donor, int rank, Color color, bool isDark) {
+// ── Podium card widget ────────────────────────────────────────────────────────
+
+class _PodiumCard extends StatelessWidget {
+  final Map<String, dynamic> donor;
+  final int rank;
+  final Color rankColor;
+  final bool isDark;
+  final bool isWinner;
+  final VoidCallback onTap;
+
+  const _PodiumCard({
+    required this.donor,
+    required this.rank,
+    required this.rankColor,
+    required this.isDark,
+    required this.onTap,
+    this.isWinner = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final String email = donor['email'] ?? 'unknown';
     final String name = email.split('@')[0];
     final String bloodType = donor['blood_type'] ?? '?';
     final int points = (donor['points'] as num? ?? 0).toInt();
 
     return GestureDetector(
-      onTap: () => _showDonorDetails(donor),
+      onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (rank == 1) Icon(Icons.workspace_premium, color: color, size: 28),
-          CircleAvatar(
-              radius: rank == 1 ? 30 : 25,
-              backgroundColor: color,
-              child: Text(bloodType,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+          if (isWinner)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Icon(Icons.workspace_premium_rounded, color: rankColor, size: 26),
+            ),
+          // Avatar
+          Container(
+            width: isWinner ? 66 : 52,
+            height: isWinner ? 66 : 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: rankColor.withOpacity(0.15),
+              border: Border.all(color: rankColor.withOpacity(0.6), width: isWinner ? 2.5 : 2),
+              boxShadow: [
+                BoxShadow(
+                  color: rankColor.withOpacity(0.3),
+                  blurRadius: isWinner ? 14 : 8,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            child: Center(
+              child: Text(
+                bloodType,
+                style: TextStyle(
+                  color: rankColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: isWinner ? 20 : 16,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          Text("$points pts",
-              style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 12)),
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isDark ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.bold,
+              fontSize: isWinner ? 13 : 11,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: rankColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: rankColor.withOpacity(0.35), width: 1),
+            ),
+            child: Text(
+              '$points pts',
+              style: TextStyle(
+                color: rankColor,
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Podium step block
+          Container(
+            height: rank == 1
+                ? 48
+                : rank == 2
+                    ? 36
+                    : 24,
+            decoration: BoxDecoration(
+              color: rankColor.withOpacity(isDark ? 0.15 : 0.1),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+              border: Border(
+                top: BorderSide(color: rankColor.withOpacity(0.4), width: 1),
+                left: BorderSide(color: rankColor.withOpacity(0.4), width: 1),
+                right: BorderSide(color: rankColor.withOpacity(0.4), width: 1),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                '#$rank',
+                style: TextStyle(
+                  color: rankColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildRestList(bool isDark) {
-    if (_leaders.length <= 3) return const SliverToBoxAdapter(child: SizedBox());
-    return SliverList(
-        delegate: SliverChildBuilderDelegate((context, index) {
-      final realIndex = index + 3;
-      if (realIndex >= _leaders.length) return null;
-      return _buildListItem(_leaders[realIndex], realIndex, isDark);
-    }, childCount: _leaders.length - 3 + (_hasMore ? 1 : 0)));
-  }
+// ── Rank list item ────────────────────────────────────────────────────────────
 
-  Widget _buildListItem(Map<String, dynamic> donor, int index, bool isDark) {
+class _RankListItem extends StatelessWidget {
+  final Map<String, dynamic> donor;
+  final int rank;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _RankListItem({
+    required this.donor,
+    required this.rank,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final String name = (donor['email'] ?? 'unknown').split('@')[0];
     final String bloodType = donor['blood_type'] ?? '?';
     final int points = (donor['points'] as num? ?? 0).toInt();
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-      child: ListTile(
-        onTap: () => _showDonorDetails(donor),
-        leading: CircleAvatar(
-            backgroundColor: AppTheme.primaryRed.withOpacity(0.1),
-            child: Text(bloodType,
-                style: const TextStyle(color: AppTheme.primaryRed, fontWeight: FontWeight.bold))),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        trailing: Text("$points pts",
-            style: TextStyle(color: Colors.orange.shade700, fontWeight: FontWeight.bold)),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkCard : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: Text(
+                '#$rank',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                ),
+              ),
+            ),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryRed.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  bloodType,
+                  style: const TextStyle(
+                    color: AppTheme.primaryRed,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                name,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppTheme.gold.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.gold.withOpacity(0.3), width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.bolt_rounded, color: AppTheme.gold, size: 13),
+                  const SizedBox(width: 3),
+                  Text('$points',
+                      style: const TextStyle(
+                          color: AppTheme.gold, fontWeight: FontWeight.bold, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

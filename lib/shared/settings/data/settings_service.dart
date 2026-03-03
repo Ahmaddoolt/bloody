@@ -1,4 +1,4 @@
-// file: lib/shared/features/settings/data/settings_service.dart
+// file: lib/shared/settings/data/settings_service.dart
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/utils/app_logger.dart';
@@ -31,18 +31,6 @@ class SettingsService {
     }
   }
 
-  Future<bool> requestHighPriority(String userId) async {
-    AppLogger.info("Attempting to set priority_status = pending for $userId");
-    try {
-      await _supabase.from('profiles').update({'priority_status': 'pending'}).eq('id', userId);
-      AppLogger.success("Priority request submitted successfully!");
-      return true;
-    } catch (e, stack) {
-      AppLogger.error("SettingsService.requestHighPriority", e, stack);
-      return false;
-    }
-  }
-
   Future<bool> updateProfile({
     required String userId,
     required String username,
@@ -63,6 +51,23 @@ class SettingsService {
     } catch (e, stack) {
       AppLogger.error("SettingsService.updateProfile", e, stack);
       return false;
+    }
+  }
+
+  /// Toggles the donor's `is_available` flag.
+  /// Returns the new value on success, null on failure.
+  Future<bool?> toggleAvailability({
+    required String userId,
+    required bool isAvailable,
+  }) async {
+    AppLogger.info("Toggling is_available=$isAvailable for $userId");
+    try {
+      await _supabase.from('profiles').update({'is_available': isAvailable}).eq('id', userId);
+      AppLogger.success("Availability updated → $isAvailable");
+      return isAvailable;
+    } catch (e, stack) {
+      AppLogger.error("SettingsService.toggleAvailability", e, stack);
+      return null;
     }
   }
 

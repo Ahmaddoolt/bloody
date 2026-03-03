@@ -1,4 +1,4 @@
-// file: lib/actors/receiver/features/map_finder/presentation/screens/receiver_map_screen.dart
+// file: lib/actors/receiver/map_finder/presentation/screens/receiver_map_screen.dart
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
@@ -20,8 +20,8 @@ class ReceiverHomeScreen extends StatefulWidget {
   State<ReceiverHomeScreen> createState() => _ReceiverHomeScreenState();
 }
 
-class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
-  // ✅ Clean Architecture: Instantiate the service
+class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
+    with SingleTickerProviderStateMixin {
   final MapFinderService _service = MapFinderService();
 
   bool _isMapView = false;
@@ -40,22 +40,37 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   GoogleMapController? _mapController;
 
   Timer? _autoRefreshTimer;
-  String _statusMessage = "initializing".tr();
+  String _statusMessage = '';
 
   String? _neededBloodType;
   String? _myCity;
+  String? _myUserId;
+  String? _myUsername;
+  bool _isBroadcasting = false;
+
+  // Pulse animation for broadcast FAB
+  late final AnimationController _pulseCtrl;
+  late final Animation<double> _pulseAnim;
 
   final List<String> _allBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _myUserId = Supabase.instance.client.auth.currentUser!.id;
+
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 1.0, end: 1.06)
+        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+
     _scrollController.addListener(_onScroll);
     _initData();
-    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
-      if (mounted && _neededBloodType != null) {
-        _fetchDonors(loadMore: false);
-      }
+
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (mounted && _neededBloodType != null) _fetchDonors(loadMore: false);
     });
   }
 
@@ -63,6 +78,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   void dispose() {
     _scrollController.dispose();
     _autoRefreshTimer?.cancel();
+    _pulseCtrl.dispose();
     super.dispose();
   }
 
@@ -73,92 +89,73 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     }
   }
 
+  // ── Init ───────────────────────────────────────────────────────────────────
+
   Future<void> _initData() async {
     await _determinePosition();
     await _fetchInitialProfile();
     Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && _isInitialLoading) {
-        setState(() => _isInitialLoading = false);
-      }
+      if (mounted && _isInitialLoading) setState(() => _isInitialLoading = false);
     });
   }
 
   Future<void> _determinePosition() async {
     if (!mounted) return;
     setState(() => _statusMessage = "checking_location".tr());
-
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() => _statusMessage = "Location denied");
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        setState(() => _statusMessage = "Location permanently denied");
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        setState(() => _statusMessage = "location_denied".tr());
         return;
       }
-
-      Position position = await Geolocator.getCurrentPosition(
+      final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 5));
-      _updateLocation(position);
-    } catch (e) {
+      _updateLocation(pos);
+    } catch (_) {
       try {
-        Position? lastKnown = await Geolocator.getLastKnownPosition();
-        if (lastKnown != null) _updateLocation(lastKnown);
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) _updateLocation(last);
       } catch (_) {}
     }
   }
 
-  void _updateLocation(Position position) {
+  void _updateLocation(Position pos) {
     if (!mounted) return;
     setState(() {
-      _currentPosition = position;
-      _statusMessage = "";
+      _currentPosition = pos;
+      _statusMessage = '';
     });
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: LatLng(position.latitude, position.longitude), zoom: 14),
-        ),
-      );
-    }
+    _mapController?.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 14)));
   }
 
   String? _normalizeBloodType(String? raw) {
     if (raw == null) return null;
-    final clean = raw.trim().toUpperCase();
-    if (_allBloodTypes.contains(clean)) return clean;
-    return null;
+    final c = raw.trim().toUpperCase();
+    return _allBloodTypes.contains(c) ? c : null;
   }
 
   Future<void> _fetchInitialProfile() async {
-    final userId = Supabase.instance.client.auth.currentUser!.id;
     try {
-      final myProfile = await _service.getReceiverProfile(userId);
-
-      if (mounted) {
-        if (myProfile != null && myProfile['blood_type'] != null) {
-          final normalized = _normalizeBloodType(myProfile['blood_type']);
-
-          setState(() {
-            _neededBloodType = normalized;
-            _myCity = myProfile['city'];
-          });
-
-          if (normalized != null) {
-            await _fetchDonors();
-          } else {
-            setState(() => _isInitialLoading = false);
-          }
-        } else {
+      final profile = await _service.getReceiverProfile(_myUserId!);
+      if (mounted && profile != null) {
+        final bt = _normalizeBloodType(profile['blood_type']);
+        setState(() {
+          _neededBloodType = bt;
+          _myCity = profile['city'];
+          _myUsername = profile['username'] ??
+              Supabase.instance.client.auth.currentUser!.email?.split('@')[0] ??
+              'Someone';
+        });
+        if (bt != null)
+          await _fetchDonors();
+        else
           setState(() => _isInitialLoading = false);
-        }
+      } else {
+        if (mounted) setState(() => _isInitialLoading = false);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _isInitialLoading = false);
     }
   }
@@ -168,7 +165,6 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
       if (mounted) setState(() => _isInitialLoading = false);
       return;
     }
-
     if (loadMore && (_isLoadingMore || !_hasMore)) return;
 
     setState(() {
@@ -183,7 +179,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     });
 
     try {
-      final fetchedDonors = await _service.getCompatibleDonors(
+      final fetched = await _service.getCompatibleDonors(
         receiverBloodType: _neededBloodType!,
         offset: _offset,
         limit: _limit,
@@ -191,107 +187,98 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
         receiverLat: _currentPosition?.latitude,
         receiverLng: _currentPosition?.longitude,
       );
-
       if (mounted) {
-        if (fetchedDonors.length < _limit) {
-          _hasMore = false;
-        }
-
+        if (fetched.length < _limit) _hasMore = false;
         setState(() {
-          _donors.addAll(fetchedDonors);
+          _donors.addAll(fetched);
           _offset += _limit;
           _isInitialLoading = false;
           _isLoadingMore = false;
           _buildMarkers();
         });
       }
-    } catch (e) {
-      if (mounted) {
+    } catch (_) {
+      if (mounted)
         setState(() {
           _isInitialLoading = false;
           _isLoadingMore = false;
         });
-      }
     }
   }
 
   void _buildMarkers() {
-    Set<Marker> newMarkers = {};
-    for (var user in _donors) {
-      if (user['latitude'] != null && user['longitude'] != null) {
-        newMarkers.add(
-          Marker(
-            markerId: MarkerId(user['id']),
-            position: LatLng(user['latitude'], user['longitude']),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-            infoWindow: InfoWindow(
-              title: 'Donor: ${user['blood_type']}',
-              snippet: 'Tap to see details',
-              onTap: () {
-                _showDonorModal(user);
-              },
-            ),
-          ),
-        );
-      }
+    final markers = <Marker>{};
+    for (final d in _donors) {
+      if (d['latitude'] == null || d['longitude'] == null) continue;
+      markers.add(Marker(
+        markerId: MarkerId(d['id']),
+        position: LatLng(d['latitude'], d['longitude']),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: 'Donor: ${d['blood_type']}',
+          snippet: 'Tap to see details',
+          onTap: () => _showDonorModal(d),
+        ),
+      ));
     }
-    setState(() => _markers = newMarkers);
+    setState(() => _markers = markers);
   }
 
+  // ── Actions ────────────────────────────────────────────────────────────────
+
   Future<void> _confirmDonation(String donorId, String donorName) async {
-    final bool? confirm = await showDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text("confirm_donation".tr()),
         content: Text("confirm_donation_body".tr(args: [donorName])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text("cancel".tr())),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: Text("yes_confirm".tr()),
-          ),
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: Text("yes_confirm".tr())),
         ],
       ),
     );
-
-    if (confirm != true) return;
+    if (ok != true) return;
 
     final success = await _service.confirmDonation(donorId);
-
-    if (success && mounted) {
-      Navigator.pop(context); // Close bottom sheet
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("donation_confirmed".tr(args: [donorName])),
-          backgroundColor: Colors.green,
-        ),
-      );
-      _fetchDonors(loadMore: false); // Refresh list
-    } else if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error updating donor status"), backgroundColor: Colors.red),
-      );
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context);
+      _showSnack("donation_confirmed".tr(args: [donorName]), Colors.green);
+      _fetchDonors(loadMore: false);
+    } else {
+      _showSnack("error_updating_donor".tr(), Colors.red);
     }
   }
 
   void _showDonorModal(Map<String, dynamic> user) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkCard : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 10),
-            Center(
-                child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+            Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.35), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
             UserCard(
               userData: user,
@@ -299,17 +286,23 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
               onCall: () => _callUser(user['phone']),
             ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () =>
-                  _confirmDonation(user['id'], user['email']?.split('@')[0] ?? 'Donor'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: () =>
+                    _confirmDonation(user['id'], user['email']?.split('@')[0] ?? 'Donor'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Icon(Icons.check_circle_rounded, size: 20),
+                label: Text("confirm_they_donated".tr(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               ),
-              icon: const Icon(Icons.check_circle),
-              label: Text("confirm_they_donated".tr()),
             ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -318,224 +311,482 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
   void _callUser(String? phone) async {
     if (phone == null) return;
-    final Uri launchUri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    }
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) launchUrl(uri);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("find_donors".tr()),
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  offset: const Offset(0, 4),
-                  blurRadius: 4,
-                )
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.bloodtype, color: AppTheme.primaryRed),
-                const SizedBox(width: 12),
-                Text(
-                  "i_need_type".tr(),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF2C2C2C) : AppTheme.surfaceWhite,
-                      borderRadius: BorderRadius.circular(8),
-                      border:
-                          Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _neededBloodType,
-                        hint: Text("select".tr()),
-                        isExpanded: true,
-                        dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                        items: _allBloodTypes.map((type) {
-                          return DropdownMenuItem(
-                            value: type,
-                            child: Text(
-                              type,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _neededBloodType = val);
-                            _fetchDonors(loadMore: false);
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _isInitialLoading
-                ? const CustomLoader()
-                : _isMapView
-                    ? _buildMap()
-                    : _buildList(isDark),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'receiver_map_fab',
-        onPressed: () {
-          setState(() {
-            _isMapView = !_isMapView;
-          });
+  void _showBroadcastSheet() {
+    if (_neededBloodType == null) {
+      _showSnack('please_select_blood_type'.tr(), Colors.orange);
+      return;
+    }
+    if (_myCity == null || _myCity!.isEmpty) {
+      _showSnack('broadcast_needs_city'.tr(), Colors.orange);
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _BroadcastSheet(
+        bloodType: _neededBloodType!,
+        city: _myCity!,
+        onConfirm: () async {
+          Navigator.pop(ctx);
+          await _executeBroadcast();
         },
-        backgroundColor: AppTheme.primaryRed,
-        foregroundColor: Colors.white,
-        icon: Icon(_isMapView ? Icons.list : Icons.map),
-        label: Text(_isMapView ? "List View" : "nav".tr()),
       ),
     );
   }
 
-  Widget _buildList(bool isDark) {
-    if (_donors.isEmpty && !_isInitialLoading) {
-      return RefreshIndicator(
-        onRefresh: () async => await _fetchDonors(loadMore: false),
-        color: AppTheme.primaryRed,
-        child: LayoutBuilder(builder: (context, constraints) {
-          return SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.volunteer_activism,
-                      size: 80,
-                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "no_compatible_donors".tr(args: [_neededBloodType ?? '']),
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
-      );
-    }
+  Future<void> _executeBroadcast() async {
+    setState(() => _isBroadcasting = true);
+    final count = await _service.sendBroadcastNotification(
+      receiverId: _myUserId!,
+      receiverBloodType: _neededBloodType!,
+      receiverCity: _myCity!,
+      receiverName: _myUsername ?? 'Someone',
+    );
+    if (!mounted) return;
+    setState(() => _isBroadcasting = false);
 
-    return Column(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(8),
-          color: isDark ? const Color(0xFF1B5E20) : Colors.green.shade50,
-          child: Text(
-            "showing_donors_compatible".tr(args: [_neededBloodType ?? '']),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: isDark ? Colors.white : Colors.green,
-                fontWeight: FontWeight.bold,
-                fontSize: 12),
-          ),
-        ),
+    if (count == -1)
+      _showSnack('broadcast_error'.tr(), Colors.red);
+    else if (count == 0)
+      _showSnack('broadcast_no_donors'.tr(), Colors.orange);
+    else
+      _showSnack('broadcast_sent'.tr(args: [count.toString()]), const Color(0xFF2E7D32));
+  }
+
+  void _showSnack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500)),
+      backgroundColor: color,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+    ));
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      appBar: AppBar(title: Text("find_donors".tr()), elevation: 0),
+      body: Column(children: [
+        _buildBloodTypeSelector(isDark),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async => await _fetchDonors(loadMore: false),
-            color: AppTheme.primaryRed,
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.only(
-                top: 16,
-                left: 16,
-                right: 16,
-                bottom: 80,
-              ),
-              itemCount: _donors.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _donors.length) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: CustomLoader(size: 30),
-                  );
+            child: _isInitialLoading
+                ? const CustomLoader()
+                : _isMapView
+                    ? _buildMap()
+                    : _buildList(isDark)),
+      ]),
+      floatingActionButton: _buildFABGroup(isDark),
+    );
+  }
+
+  Widget _buildBloodTypeSelector(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05), offset: const Offset(0, 3), blurRadius: 6)
+        ],
+      ),
+      child: Row(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration:
+              BoxDecoration(color: AppTheme.primaryRed.withOpacity(0.1), shape: BoxShape.circle),
+          child: const Icon(Icons.bloodtype_rounded, color: AppTheme.primaryRed, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+            child: Text("i_need_type".tr(),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkCard : AppTheme.surfaceWhite,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _neededBloodType,
+              hint: Text("select".tr(), style: const TextStyle(fontSize: 14)),
+              dropdownColor: isDark ? AppTheme.darkCard : Colors.white,
+              items: _allBloodTypes
+                  .map((t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(t,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _neededBloodType = val);
+                  _fetchDonors(loadMore: false);
                 }
-                final donor = _donors[index];
-                return GestureDetector(
-                  onTap: () => _showDonorModal(donor),
-                  child: AbsorbPointer(
-                    child: UserCard(
-                      userData: donor,
-                      onTap: () {},
-                      onCall: () {},
-                    ),
-                  ),
-                );
               },
             ),
           ),
         ),
+      ]),
+    );
+  }
+
+  Widget _buildFABGroup(bool isDark) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // ── Broadcast (primary) ──────────────────────────────────────
+        ScaleTransition(
+          scale: _pulseAnim,
+          child: FloatingActionButton.extended(
+            heroTag: 'broadcast_fab',
+            onPressed: _isBroadcasting ? null : _showBroadcastSheet,
+            backgroundColor:
+                _isBroadcasting ? AppTheme.primaryRed.withOpacity(0.7) : AppTheme.primaryRed,
+            foregroundColor: Colors.white,
+            elevation: 6,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            icon: _isBroadcasting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                : const Icon(Icons.campaign_rounded, size: 22),
+            label: Text(
+              _isBroadcasting ? 'broadcasting'.tr() : 'broadcast_request'.tr(),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // ── Toggle map/list ──────────────────────────────────────────
+        FloatingActionButton(
+          heroTag: 'receiver_map_fab',
+          onPressed: () => setState(() => _isMapView = !_isMapView),
+          backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
+          foregroundColor: AppTheme.primaryRed,
+          elevation: 3,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: AppTheme.primaryRed.withOpacity(0.35), width: 1.5),
+          ),
+          child: Icon(_isMapView ? Icons.list_rounded : Icons.map_rounded, size: 22),
+        ),
       ],
+    );
+  }
+
+  Widget _buildList(bool isDark) {
+    if (_donors.isEmpty) {
+      return _buildEmptyState(isDark);
+    }
+    return Column(children: [
+      _buildCompatibilityBanner(isDark),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: () async => _fetchDonors(loadMore: false),
+          color: AppTheme.primaryRed,
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+            itemCount: _donors.length + (_hasMore ? 1 : 0),
+            itemBuilder: (ctx, i) {
+              if (i == _donors.length) {
+                return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20), child: CustomLoader(size: 28));
+              }
+              return GestureDetector(
+                onTap: () => _showDonorModal(_donors[i]),
+                child: AbsorbPointer(
+                    child: UserCard(userData: _donors[i], onTap: () {}, onCall: () {})),
+              );
+            },
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return RefreshIndicator(
+      onRefresh: () async => _fetchDonors(loadMore: false),
+      color: AppTheme.primaryRed,
+      child: LayoutBuilder(builder: (ctx, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withOpacity(0.04) : Colors.grey.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.volunteer_activism,
+                        size: 50, color: isDark ? Colors.grey.shade700 : Colors.grey.shade400),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "no_compatible_donors".tr(args: [_neededBloodType ?? '']),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'try_broadcast_hint'.tr(),
+                    style: TextStyle(
+                        fontSize: 13, color: isDark ? Colors.grey[600] : Colors.grey[400]),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildCompatibilityBanner(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: isDark ? const Color(0xFF1B5E20).withOpacity(0.6) : Colors.green.shade50,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.check_circle_outline_rounded,
+              size: 14, color: isDark ? Colors.green[300] : Colors.green[700]),
+          const SizedBox(width: 6),
+          Text(
+            "showing_donors_compatible".tr(args: [_neededBloodType ?? '']),
+            style: TextStyle(
+                color: isDark ? Colors.green[300] : Colors.green[700],
+                fontWeight: FontWeight.bold,
+                fontSize: 12),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.green.withOpacity(0.2) : Colors.green.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text('${_donors.length}',
+                style: TextStyle(
+                    color: isDark ? Colors.green[300] : Colors.green[700],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildMap() {
     if (_currentPosition == null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CustomLoader(),
-            const SizedBox(height: 20),
-            Text(
-              _statusMessage,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CustomLoader(),
+              const SizedBox(height: 24),
+              Text(_statusMessage,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 15, color: Colors.grey)),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
                 onPressed: _determinePosition,
-                icon: const Icon(Icons.refresh),
-                label: Text("retry_gps".tr()))
-          ],
+                icon: const Icon(Icons.my_location_rounded),
+                label: Text("retry_gps".tr()),
+                style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14)),
+              ),
+            ],
+          ),
         ),
       );
     }
-
     return GoogleMap(
       initialCameraPosition: CameraPosition(
-        target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        zoom: 14,
-      ),
+          target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude), zoom: 14),
       myLocationEnabled: true,
       myLocationButtonEnabled: true,
       markers: _markers,
-      onMapCreated: (ctrl) => _mapController = ctrl,
+      onMapCreated: (c) => _mapController = c,
+    );
+  }
+}
+
+// ── Broadcast Sheet ───────────────────────────────────────────────────────────
+
+class _BroadcastSheet extends StatelessWidget {
+  final String bloodType;
+  final String city;
+  final VoidCallback onConfirm;
+
+  const _BroadcastSheet({
+    required this.bloodType,
+    required this.city,
+    required this.onConfirm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppTheme.darkCard : Colors.white;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.18), blurRadius: 24, offset: const Offset(0, -4))
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.35), borderRadius: BorderRadius.circular(2))),
+
+            // Icon
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [
+                    AppTheme.primaryRed.withOpacity(0.15),
+                    AppTheme.primaryRed.withOpacity(0.06)
+                  ], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.primaryRed.withOpacity(0.2), width: 1.5)),
+              child: const Icon(Icons.campaign_rounded, color: AppTheme.primaryRed, size: 36),
+            ),
+            const SizedBox(height: 20),
+
+            Text(
+              'broadcast_title'.tr(),
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                  height: 1.3),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'broadcast_subtitle'.tr(),
+              style: TextStyle(
+                  fontSize: 14, height: 1.6, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+
+            // Info chips
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _Chip(icon: Icons.bloodtype_rounded, label: bloodType, color: AppTheme.primaryRed),
+                const SizedBox(width: 10),
+                _Chip(icon: Icons.location_city_rounded, label: city, color: Colors.blue.shade700),
+              ],
+            ),
+            const SizedBox(height: 28),
+
+            // Confirm
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: onConfirm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryRed,
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  shadowColor: AppTheme.primaryRed.withOpacity(0.4),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Icon(Icons.send_rounded, size: 20),
+                label: Text('send_broadcast'.tr(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Cancel
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  foregroundColor: isDark ? Colors.grey[400] : Colors.grey[600],
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text('cancel'.tr(), style: const TextStyle(fontSize: 15)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _Chip({required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 15),
+        const SizedBox(width: 6),
+        Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+      ]),
     );
   }
 }

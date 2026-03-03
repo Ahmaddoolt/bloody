@@ -1,4 +1,4 @@
-// file: lib/actors/donor/features/dashboard/presentation/screens/donor_dashboard_screen.dart
+// file: lib/actors/donor/dashboard/presentation/screens/donor_dashboard_screen.dart
 import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
@@ -20,7 +20,7 @@ class DonorHomeScreen extends StatefulWidget {
   State<DonorHomeScreen> createState() => _DonorHomeScreenState();
 }
 
-class _DonorHomeScreenState extends State<DonorHomeScreen> {
+class _DonorHomeScreenState extends State<DonorHomeScreen> with SingleTickerProviderStateMixin {
   final DonorDashboardService _service = DonorDashboardService();
 
   bool _isMapView = false;
@@ -36,11 +36,12 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   final ScrollController _scrollController = ScrollController();
   Position? _currentPosition;
   Set<Marker> _markers = {};
+  GoogleMapController? _mapController;
 
   String? _myBloodType;
   String? _myCity;
   int _myPoints = 0;
-  String _statusMessage = "initializing".tr();
+  String _statusMessage = '';
 
   bool _isDeferred = false;
   DateTime? _lastDonationDate;
@@ -49,16 +50,24 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   Timer? _autoRefreshTimer;
   String _remainingTime = '';
 
+  // Shimmer pulse for deferred ring
+  late final AnimationController _ringCtrl;
+  late final Animation<double> _ringAnim;
+
   @override
   void initState() {
     super.initState();
+
+    _ringCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat(reverse: true);
+    _ringAnim = Tween<double>(begin: 0.6, end: 1.0)
+        .animate(CurvedAnimation(parent: _ringCtrl, curve: Curves.easeInOut));
+
     _scrollController.addListener(_onScroll);
     _initData();
 
-    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
-      if (!_isDeferred && !_hasError && mounted) {
-        _fetchData(loadMore: false);
-      }
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (!_isDeferred && !_hasError && mounted) _fetchData(loadMore: false);
     });
   }
 
@@ -67,28 +76,26 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     _scrollController.dispose();
     _countdownTimer?.cancel();
     _autoRefreshTimer?.cancel();
+    _ringCtrl.dispose();
     super.dispose();
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String days = duration.inDays.toString();
-    String hours = twoDigits(duration.inHours.remainder(24));
-    String minutes = twoDigits(duration.inMinutes.remainder(60));
-    String seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$days:$hours:$minutes:$seconds";
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  String _formatDuration(Duration d) {
+    String pad(int n) => n.toString().padLeft(2, '0');
+    return '${d.inDays}d  ${pad(d.inHours.remainder(24))}h'
+        '  ${pad(d.inMinutes.remainder(60))}m'
+        '  ${pad(d.inSeconds.remainder(60))}s';
   }
 
   void _startCountdownTimer() {
     _countdownTimer?.cancel();
     if (_nextEligibleDate == null) return;
-
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      final now = DateTime.now();
-      final remaining = _nextEligibleDate!.difference(now);
-
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      final remaining = _nextEligibleDate!.difference(DateTime.now());
       if (remaining.isNegative) {
-        timer.cancel();
+        t.cancel();
         if (mounted) {
           setState(() {
             _isDeferred = false;
@@ -102,12 +109,21 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     });
   }
 
+  double _calculateDeferralProgress() {
+    if (_lastDonationDate == null || _nextEligibleDate == null) return 0;
+    final total = _nextEligibleDate!.difference(_lastDonationDate!).inSeconds;
+    final elapsed = DateTime.now().difference(_lastDonationDate!).inSeconds;
+    return total <= 0 ? 1.0 : (elapsed / total).clamp(0.0, 1.0);
+  }
+
   void _onScroll() {
     if (_isMapView || _isDeferred || _hasError) return;
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       _fetchData(loadMore: true);
     }
   }
+
+  // ── Data ───────────────────────────────────────────────────────────────────
 
   Future<void> _initData() async {
     await _determinePosition();
@@ -117,17 +133,20 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   Future<void> _determinePosition() async {
     setState(() => _statusMessage = "checking_location".tr());
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 5),
-      );
-      if (mounted) {
-        setState(() {
-          _currentPosition = position;
-          _statusMessage = "";
-        });
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        if (mounted) setState(() => _statusMessage = "location_denied".tr());
+        return;
       }
-    } catch (e) {
+      final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 5));
+      if (mounted)
+        setState(() {
+          _currentPosition = pos;
+          _statusMessage = '';
+        });
+    } catch (_) {
       if (mounted) setState(() => _statusMessage = "GPS unavailable");
     }
   }
@@ -150,7 +169,6 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
       final myProfile = await _service.getDonorProfile(userId);
-
       if (myProfile == null) throw Exception("Profile not found");
 
       _myBloodType = (myProfile['blood_type'] as String?)?.trim();
@@ -160,7 +178,6 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
       if (myProfile['last_donation_date'] != null) {
         _lastDonationDate = DateTime.parse(myProfile['last_donation_date']);
         _nextEligibleDate = _lastDonationDate!.add(const Duration(days: 90));
-
         if (_nextEligibleDate!.isAfter(DateTime.now())) {
           if (mounted) {
             setState(() {
@@ -185,7 +202,6 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
           donorLat: _currentPosition?.latitude,
           donorLng: _currentPosition?.longitude,
         );
-
         if (mounted) {
           if (receivers.length < _limit) _hasMore = false;
           setState(() {
@@ -199,7 +215,7 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
       } else {
         if (mounted) setState(() => _isInitialLoading = false);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -211,227 +227,538 @@ class _DonorHomeScreenState extends State<DonorHomeScreen> {
   }
 
   void _buildMarkers() {
-    Set<Marker> newMarkers = {};
-    for (var item in _feedItems) {
-      if (item['latitude'] != null && item['longitude'] != null) {
-        final double lat = (item['latitude'] as num).toDouble();
-        final double lng = (item['longitude'] as num).toDouble();
-
-        newMarkers.add(
-          Marker(
-            markerId: MarkerId('receiver_${item['id']}'),
-            position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-            infoWindow: InfoWindow(
-              title: 'Needs ${item['blood_type']}',
-              snippet: 'Tap to call',
-              onTap: () => _makeCall(item['phone']),
-            ),
-          ),
-        );
-      }
+    final markers = <Marker>{};
+    for (final item in _feedItems) {
+      if (item['latitude'] == null || item['longitude'] == null) continue;
+      markers.add(Marker(
+        markerId: MarkerId('receiver_${item['id']}'),
+        position:
+            LatLng((item['latitude'] as num).toDouble(), (item['longitude'] as num).toDouble()),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+        infoWindow: InfoWindow(
+          title: 'Needs ${item['blood_type']}',
+          snippet: 'Tap to call',
+          onTap: () => _makeCall(item['phone']),
+        ),
+      ));
     }
-    setState(() => _markers = newMarkers);
+    setState(() => _markers = markers);
   }
 
   void _makeCall(String? phone) async {
     if (phone == null) return;
-    final Uri launchUri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(launchUri)) await launchUrl(launchUri);
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) launchUrl(uri);
   }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 80,
-        title: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.star, color: Colors.amber, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    "my_points".tr(args: [_myPoints.toString()]),
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (_myBloodType != null)
-              Text('matches_for_donor'.tr(args: [_myBloodType!]),
-                  style: const TextStyle(fontSize: 14)),
-          ],
-        ),
-      ),
-      body: _buildBody(),
-      floatingActionButton: (_isDeferred || _isInitialLoading || _hasError)
-          ? null
-          : FloatingActionButton.extended(
-              heroTag: 'donor_map_fab',
-              onPressed: () => setState(() => _isMapView = !_isMapView),
-              backgroundColor: AppTheme.primaryRed,
-              foregroundColor: Colors.white,
-              icon: Icon(_isMapView ? Icons.list : Icons.map),
-              label: Text(_isMapView ? "List View" : "nav".tr()),
-            ),
+      backgroundColor: isDark ? AppTheme.darkBackground : const Color(0xFFF5F6FA),
+      body: _buildBody(isDark),
+      floatingActionButton:
+          (_isDeferred || _isInitialLoading || _hasError) ? null : _buildFAB(isDark),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(bool isDark) {
     if (_isInitialLoading) return const CustomLoader();
 
-    if (_hasError) {
-      return Center(
+    if (_hasError) return _buildErrorState(isDark);
+    if (_isDeferred) return _buildDeferralView(isDark);
+
+    return Column(children: [
+      _buildAppHeader(isDark),
+      Expanded(child: _isMapView ? _buildMap() : _buildList(isDark)),
+    ]);
+  }
+
+  // ─── Gradient App Header ───────────────────────────────────────────────────
+
+  Widget _buildAppHeader(bool isDark) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.darkRed, AppTheme.primaryRed],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row: greeting + points badge
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'matches_for_donor'.tr(args: [_myBloodType ?? '—']),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                  ),
+                  _PointsBadge(points: _myPoints),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Stats row
+              Row(
+                children: [
+                  _StatPill(
+                    icon: Icons.people_alt_rounded,
+                    label: '${_feedItems.length} receivers',
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 10),
+                  if (_myCity != null)
+                    _StatPill(
+                      icon: Icons.location_on_rounded,
+                      label: _myCity!,
+                      color: Colors.white,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Deferral view ─────────────────────────────────────────────────────────
+
+  Widget _buildDeferralView(bool isDark) {
+    final progress = _calculateDeferralProgress();
+
+    return Column(
+      children: [
+        // Gradient header strip
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppTheme.darkRed, AppTheme.primaryRed],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Text(
+              'thank_you_donor'.tr(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                // Progress ring card
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.darkCard : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryRed.withOpacity(0.12),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      // Circular progress
+                      SizedBox(
+                        width: 160,
+                        height: 160,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            AnimatedBuilder(
+                              animation: _ringAnim,
+                              builder: (_, __) => SizedBox(
+                                width: 160,
+                                height: 160,
+                                child: CircularProgressIndicator(
+                                  value: progress,
+                                  strokeWidth: 10,
+                                  backgroundColor: const Color(0xFFE65100).withOpacity(0.15),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color.lerp(const Color(0xFFE65100), const Color(0xFF2E7D32),
+                                            progress) ??
+                                        AppTheme.primaryRed,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${(progress * 100).toInt()}%',
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                ),
+                                Text(
+                                  'recovered'.tr(),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        'donation_deferral_notice'.tr(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Countdown box
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE65100).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: const Color(0xFFE65100).withOpacity(0.25), width: 1.5),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'time_until_next_donation'.tr(),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[500],
+                                  letterSpacing: 0.5),
+                            ),
+                            const SizedBox(height: 10),
+                            _remainingTime.isEmpty
+                                ? const CustomLoader(size: 24)
+                                : Text(
+                                    _remainingTime,
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: isDark ? Colors.white : AppTheme.darkRed,
+                                      fontFamily: 'monospace',
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Health tip card
+                _buildHealthTipCard(isDark),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHealthTipCard(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade700.withOpacity(isDark ? 0.15 : 0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade700.withOpacity(0.2), width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.blue.shade700.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.tips_and_updates_rounded, color: Colors.blue.shade700, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('recovery_tip_title'.tr(),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : Colors.black87)),
+                const SizedBox(height: 4),
+                Text('recovery_tip_body'.tr(),
+                    style: TextStyle(
+                        fontSize: 12,
+                        height: 1.6,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600])),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Error state ───────────────────────────────────────────────────────────
+
+  Widget _buildErrorState(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text("error_loading".tr(), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: () => _fetchData(), child: Text("retry".tr()))
-          ],
-        ),
-      );
-    }
-
-    if (_isDeferred) return _buildDeferralView();
-    if (_isMapView) return _buildMap();
-
-    return _buildList();
-  }
-
-  Widget _buildDeferralView() {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(32.0),
-        margin: const EdgeInsets.all(24.0),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardTheme.color,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.timer_rounded, color: AppTheme.primaryRed, size: 80),
-            const SizedBox(height: 24),
-            Text("thank_you_donor".tr(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Text("donation_deferral_notice".tr(),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey[600], height: 1.5)),
-            const Divider(height: 40),
-            Text("time_until_next_donation".tr(),
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.cloud_off_rounded, size: 40, color: Colors.red),
+            ),
+            const SizedBox(height: 20),
+            Text("error_loading".tr(),
                 style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 17,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.grey[400] : Colors.grey[700])),
-            const SizedBox(height: 12),
-            if (_remainingTime.isEmpty)
-              const CustomLoader(size: 30)
-            else
-              Text(_remainingTime,
-                  style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: isDark ? Colors.white : AppTheme.darkRed,
-                      fontFamily: 'monospace')),
+                    color: isDark ? Colors.white : Colors.black87)),
             const SizedBox(height: 8),
-            Text("days : hours : minutes : seconds",
-                style: TextStyle(
-                    fontSize: 10,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
-                    letterSpacing: 1.2)),
+            Text("check_connection".tr(),
+                style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => _fetchData(),
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text("retry".tr()),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildList() {
+  // ─── List ──────────────────────────────────────────────────────────────────
+
+  Widget _buildList(bool isDark) {
     if (_myBloodType == null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.bloodtype_outlined, size: 80, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text("blood_type_missing".tr(),
-                style: const TextStyle(fontSize: 18, color: Colors.grey)),
-            const SizedBox(height: 8),
-            // Note: Update path to SettingsScreen later if needed
-            ElevatedButton(onPressed: () {}, child: Text("update_settings".tr()))
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.bloodtype_outlined, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text("blood_type_missing".tr(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, color: Colors.grey)),
+            ],
+          ),
         ),
       );
     }
 
     if (_feedItems.isEmpty) {
       return RefreshIndicator(
-        onRefresh: () async => await _fetchData(loadMore: false),
+        onRefresh: () async => _fetchData(loadMore: false),
         color: AppTheme.primaryRed,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.6,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle_outline, size: 80, color: Colors.green),
+        child: LayoutBuilder(builder: (_, constraints) {
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(isDark ? 0.1 : 0.07),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check_circle_outline, size: 48, color: Colors.green),
+                  ),
                   const SizedBox(height: 20),
-                  Text("no_receivers_nearby".tr(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
+                  Text(
+                    "no_receivers_nearby".tr(),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white70 : Colors.black54),
+                  ),
+                ]),
               ),
             ),
-          ),
-        ),
+          );
+        }),
       );
     }
 
     return RefreshIndicator(
-      onRefresh: () async => await _fetchData(loadMore: false),
+      onRefresh: () async => _fetchData(loadMore: false),
       color: AppTheme.primaryRed,
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 80),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         itemCount: _feedItems.length + (_hasMore ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _feedItems.length)
+        itemBuilder: (ctx, i) {
+          if (i == _feedItems.length) {
             return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20), child: CustomLoader(size: 30));
-          final item = _feedItems[index];
+                padding: EdgeInsets.symmetric(vertical: 20), child: CustomLoader(size: 28));
+          }
+          final item = _feedItems[i];
           return UserCard(userData: item, onTap: () {}, onCall: () => _makeCall(item['phone']));
         },
       ),
     );
   }
 
+  // ─── Map ───────────────────────────────────────────────────────────────────
+
   Widget _buildMap() {
-    if (_currentPosition == null) return Center(child: Text(_statusMessage));
+    if (_currentPosition == null) {
+      return Center(
+          child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CustomLoader(),
+          const SizedBox(height: 20),
+          Text(_statusMessage, style: const TextStyle(color: Colors.grey)),
+        ],
+      ));
+    }
     return GoogleMap(
       initialCameraPosition: CameraPosition(
           target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude), zoom: 12),
       myLocationEnabled: true,
       markers: _markers,
+      onMapCreated: (c) => _mapController = c,
+    );
+  }
+
+  // ─── FAB ───────────────────────────────────────────────────────────────────
+
+  Widget _buildFAB(bool isDark) {
+    return FloatingActionButton(
+      heroTag: 'donor_map_fab',
+      onPressed: () => setState(() => _isMapView = !_isMapView),
+      backgroundColor: _isMapView ? Colors.white : AppTheme.primaryRed,
+      foregroundColor: _isMapView ? AppTheme.primaryRed : Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isMapView
+            ? BorderSide(color: AppTheme.primaryRed.withOpacity(0.4), width: 1.5)
+            : BorderSide.none,
+      ),
+      child: Icon(_isMapView ? Icons.list_rounded : Icons.map_rounded, size: 24),
+    );
+  }
+}
+
+// ── Small helper widgets ──────────────────────────────────────────────────────
+
+class _PointsBadge extends StatelessWidget {
+  final int points;
+  const _PointsBadge({required this.points});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+          const SizedBox(width: 6),
+          Text(
+            '$points pts',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _StatPill({required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+        ],
+      ),
     );
   }
 }

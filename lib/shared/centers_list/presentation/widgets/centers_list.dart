@@ -1,4 +1,4 @@
-// file: lib/features/centers/widgets/centers_list.dart
+// file: lib/shared/centers_list/presentation/widgets/centers_list.dart
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
@@ -15,7 +15,7 @@ class CentersList extends StatelessWidget {
   final Function(Map<String, dynamic>) onEdit;
   final Function(String) onDelete;
   final Function(Map<String, dynamic>) onViewStock;
-  final RefreshCallback onRefresh; // NEW CALLBACK
+  final RefreshCallback onRefresh;
 
   const CentersList({
     super.key,
@@ -27,58 +27,68 @@ class CentersList extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onViewStock,
-    required this.onRefresh, // REQUIRED
+    required this.onRefresh,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     if (centers.isEmpty && !isLoading) {
-      // Empty state with Pull-to-Refresh support
       return RefreshIndicator(
         onRefresh: onRefresh,
         color: AppTheme.primaryRed,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.local_hospital_outlined, size: 80, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      Text("no_centers".tr(),
-                          style: const TextStyle(color: Colors.grey, fontSize: 18)),
-                    ],
-                  ),
+        child: LayoutBuilder(builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryRed.withOpacity(0.08),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.local_hospital_outlined,
+                          size: 44, color: AppTheme.primaryRed),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'no_centers'.tr(),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        }),
       );
     }
 
-    // List with Pull-to-Refresh
     return RefreshIndicator(
       onRefresh: onRefresh,
       color: AppTheme.primaryRed,
       child: ListView.builder(
         controller: scrollController,
-        padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 80),
-        itemCount: centers.length + 1, // +1 for loader
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        itemCount: centers.length + 1,
         itemBuilder: (context, index) {
           if (index == centers.length) {
             return isLoading
                 ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: CustomLoader(size: 30),
-                  )
+                    padding: EdgeInsets.symmetric(vertical: 20), child: CustomLoader(size: 28))
                 : const SizedBox.shrink();
           }
-
           final center = centers[index];
           return CenterCard(
             center: center,
