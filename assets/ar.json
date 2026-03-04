@@ -161,5 +161,22 @@
   "error_saving": "حدث خطأ أثناء الحفظ",
   "email_not_found": "البريد غير موجود. يجب التسجيل أولاً.",
   "urgent_request": "طلب عاجل",
-  "need_amount": "بحاجة {}"
+  "need_amount": "بحاجة {}",
+  "email_invalid": "أدخل بريداً إلكترونياً صحيحاً",
+  "username_error": "اسم المستخدم يجب أن يكون 3 أحرف على الأقل",
+  "phone_invalid": "أدخل رقم هاتف صحيحاً",
+  "confirm_password": "تأكيد كلمة المرور",
+  "confirm_password_error": "كلمتا المرور غير متطابقتين",
+  "city_label": "المدينة",
+  "city_required": "الرجاء اختيار المدينة",
+  "signup_failed": "فشل إنشاء الحساب. حاول مرة أخرى.",
+  "login_failed": "فشل تسجيل الدخول. حاول مرة أخرى.",
+  "auth_error_invalid_credentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+  "auth_error_email_not_confirmed": "الرجاء تأكيد بريدك الإلكتروني أولاً",
+  "auth_error_already_registered": "هذا البريد مسجل بالفعل",
+  "auth_error_too_many_requests": "محاولات كثيرة. حاول لاحقاً.",
+  "auth_error_network": "خطأ في الاتصال. تحقق من الشبكة.",
+  "password_strength_weak": "ضعيفة",
+  "password_strength_medium": "متوسطة",
+  "password_strength_strong": "قوية"
 }

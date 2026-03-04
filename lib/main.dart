@@ -1,16 +1,16 @@
 // file: lib/main.dart
 import 'dart:async';
 
-import 'package:bloody/shared/auth/presentation/screens/login_screen.dart';
-import 'package:bloody/shared/auth/presentation/screens/onboarding_screen.dart';
-import 'package:bloody/shared/auth/presentation/screens/splash_screen.dart';
+import 'package:bloody/features/shared/auth/presentation/screens/login_screen.dart';
+import 'package:bloody/features/shared/auth/presentation/screens/onboarding_screen.dart';
+import 'package:bloody/features/shared/auth/presentation/screens/splash_screen.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ✅ NEW CLEAN ARCHITECTURE IMPORTS
-import 'actors/admin/home/presentation/screens/admin_home_screen.dart';
+import 'features/admin/home/presentation/screens/admin_home_screen.dart';
 import 'core/constants/supabase_constants.dart';
 import 'core/layout/main_layout.dart';
 import 'core/theme/app_theme.dart';

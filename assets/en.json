@@ -137,5 +137,22 @@
   "error_saving": "Error saving data",
   "email_not_found": "Email not found. User must sign up first.",
   "urgent_request": "URGENT REQUEST",
-  "need_amount": "Need {}"
+  "need_amount": "Need {}",
+  "email_invalid": "Enter a valid email address",
+  "username_error": "Username must be at least 3 characters",
+  "phone_invalid": "Enter a valid phone number",
+  "confirm_password": "Confirm Password",
+  "confirm_password_error": "Passwords do not match",
+  "city_label": "City",
+  "city_required": "Please select your city",
+  "signup_failed": "Sign up failed. Please try again.",
+  "login_failed": "Login failed. Please try again.",
+  "auth_error_invalid_credentials": "Invalid email or password",
+  "auth_error_email_not_confirmed": "Please verify your email first",
+  "auth_error_already_registered": "This email is already registered",
+  "auth_error_too_many_requests": "Too many attempts. Please try later.",
+  "auth_error_network": "Network error. Check your connection.",
+  "password_strength_weak": "Weak",
+  "password_strength_medium": "Medium",
+  "password_strength_strong": "Strong"
 }
