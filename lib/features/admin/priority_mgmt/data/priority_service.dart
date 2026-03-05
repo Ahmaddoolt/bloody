@@ -12,7 +12,7 @@ class PriorityService {
 
     final data = await _supabase
         .from('profiles')
-        .select('id, username, email, phone, blood_type, city, priority_status')
+        .select('id, username, email, phone, blood_type, city, priority_status, user_type')
         .eq('priority_status', 'pending')
         .order('created_at', ascending: true);
 

@@ -255,6 +255,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 20),
                 ],
                 if (!_isDonor) ...[
+                  _buildAvailabilityCard(isDark),
+                  const SizedBox(height: 12),
                   _buildPriorityStatusCard(isDark),
                   const SizedBox(height: 20),
                 ],

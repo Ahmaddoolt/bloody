@@ -188,6 +188,7 @@ class _PriorityRequestCard extends StatelessWidget {
         : email.split('@')[0];
     final String city = user['city'] ?? 'Unknown City';
     final String? phone = user['phone'];
+    final bool isDonor = user['user_type'] == 'donor';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -286,18 +287,39 @@ class _PriorityRequestCard extends StatelessWidget {
                   ),
                 ),
 
-                // Pending Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'PENDING',
-                    style:
-                        TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
+                // Role + Pending Badges
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (isDonor ? AppTheme.primaryRed : Colors.blue).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        isDonor ? 'DONOR' : 'RECEIVER',
+                        style: TextStyle(
+                          color: isDonor ? AppTheme.primaryRed : Colors.blue,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'PENDING',
+                        style: TextStyle(
+                            color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
