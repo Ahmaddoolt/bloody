@@ -199,5 +199,6 @@
   "priority_rejected": "الأولوية مرفوضة",
   "priority_rejected_desc": "لم تتم الموافقة على طلب أولويتك.",
   "priority_none": "لا أولوية",
-  "priority_none_desc": "لا يوجد طلب أولوية نشط."
+  "priority_none_desc": "لا يوجد طلب أولوية نشط.",
+  "city": "المدينة"
 }

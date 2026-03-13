@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../../core/layout/main_layout.dart';
+import '../../../../../core/services/fcm_service.dart';
 import '../../../../../core/theme/app_spacing.dart';
 import '../../../../../references/button_patterns.dart';
 import '../../data/auth_service.dart';
@@ -116,6 +117,15 @@ class _SignupScreenState extends State<SignupScreen>
     setState(() => _isLoading = false);
 
     if (result.success) {
+      if (_selectedType == 'receiver') {
+        await FcmService.initialize();
+        await FcmService.notifyDonorsInCity(
+          city: _selectedCity!,
+          title: 'New Blood Request',
+          body: 'Someone in $_selectedCity needs $_selectedBloodType blood. Check now!',
+        );
+      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('account_created'.tr()),

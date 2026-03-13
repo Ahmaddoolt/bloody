@@ -8,6 +8,7 @@ import '../../features/donor/leaderboard/presentation/screens/leaderboard_screen
 import '../../features/receiver/map_finder/presentation/screens/receiver_map_screen.dart';
 import '../../features/shared/centers_list/presentation/screens/centers_screen.dart';
 import '../../features/shared/settings/presentation/screens/settings_screen.dart';
+import '../services/fcm_service.dart';
 import '../theme/app_theme.dart';
 
 class MainLayout extends StatefulWidget {
@@ -25,6 +26,8 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   void initState() {
     super.initState();
+    FcmService.initialize();
+    FcmService.setupForegroundHandler();
     _screens = [
       widget.userType == 'donor' ? const DonorHomeScreen() : const ReceiverHomeScreen(),
       const CentersScreen(),

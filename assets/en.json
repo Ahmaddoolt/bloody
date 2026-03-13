@@ -177,5 +177,6 @@
   "priority_rejected": "Priority Rejected",
   "priority_rejected_desc": "Your priority request was not approved.",
   "priority_none": "No Priority",
-  "priority_none_desc": "You have no active priority request."
+  "priority_none_desc": "You have no active priority request.",
+  "city": "City"
 }

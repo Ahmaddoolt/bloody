@@ -15,7 +15,7 @@ class AppTheme {
     } else if (saved == "light") {
       themeNotifier.value = ThemeMode.light;
     } else {
-      themeNotifier.value = ThemeMode.system;
+      themeNotifier.value = ThemeMode.light;
     }
   }
 

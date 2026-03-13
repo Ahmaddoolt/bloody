@@ -5,9 +5,12 @@ import 'package:bloody/features/shared/auth/presentation/screens/login_screen.da
 import 'package:bloody/features/shared/auth/presentation/screens/onboarding_screen.dart';
 import 'package:bloody/features/shared/auth/presentation/screens/splash_screen.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'firebase_options.dart';
 
 // ✅ NEW CLEAN ARCHITECTURE IMPORTS
 import 'features/admin/home/presentation/screens/admin_home_screen.dart';
@@ -20,6 +23,7 @@ import 'core/widgets/custom_loader.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await Supabase.initialize(
     url: SupabaseConstants.url,

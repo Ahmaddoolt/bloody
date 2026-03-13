@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../../../core/services/fcm_service.dart';
 import '../../../../../../core/theme/app_theme.dart';
 import '../../../../../../core/widgets/custom_loader.dart';
 import '../../../../shared/auth/presentation/screens/login_screen.dart';
@@ -375,6 +376,99 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     );
   }
 
+  // ── Notify Donors ─────────────────────────────────────────────────────────
+
+  void _showNotifyDonorsSheet(Map<String, dynamic> center) {
+    final city = center['city'] as String? ?? '';
+    final messageController = TextEditingController(
+      text: 'Urgent blood donation needed in $city. Please check the app.',
+    );
+    final titleController = TextEditingController(text: 'Blood Donation Alert');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(ctx).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[400],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Notify Donors in $city',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Title',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: messageController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Message',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.send_rounded),
+                  label: const Text('Send Notification'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepOrange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await FcmService.notifyDonorsInCity(
+                      city: city,
+                      title: titleController.text.trim(),
+                      body: messageController.text.trim(),
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Notification sent to donors in $city'),
+                          backgroundColor: Colors.deepOrange,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   // ── Navigation ────────────────────────────────────────────────────────────
 
   void _navigateToPriorityScreen() async {
@@ -671,6 +765,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                           onDelete: (id) => _deleteCenter(id),
                           onViewStock: (center) => _showStockModal(center),
                           onRefresh: () async => await _fetchCenters(loadMore: false),
+                          onNotifyDonors: _showNotifyDonorsSheet,
                         ),
                 ),
               ],

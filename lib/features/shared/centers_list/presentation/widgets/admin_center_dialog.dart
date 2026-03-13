@@ -30,6 +30,13 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
 
   bool _isSaving = false;
   bool _isGeocoding = false;
+  String? _selectedCity;
+
+  static const _cities = [
+    'Damascus', 'Aleppo', 'Homs', 'Hama', 'Latakia', 'Tartus', 'Idlib',
+    'Daraa', 'As-Suwayda', 'Quneitra', 'Deir ez-Zor', 'Al-Hasakah',
+    'Raqqa', 'Rif Dimashq',
+  ];
 
   @override
   void initState() {
@@ -40,6 +47,7 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
     _latCtrl = TextEditingController(text: widget.center?['latitude']?.toString() ?? '');
     _lngCtrl = TextEditingController(text: widget.center?['longitude']?.toString() ?? '');
     _emailCtrl = TextEditingController();
+    _selectedCity = widget.center?['city'];
   }
 
   @override
@@ -115,6 +123,7 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
         'phone': _phoneCtrl.text.trim(),
         'latitude': double.tryParse(_latCtrl.text),
         'longitude': double.tryParse(_lngCtrl.text),
+        'city': _selectedCity,
       };
       if (adminId != null) data['admin_id'] = adminId;
 
@@ -272,6 +281,44 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                   icon: Icons.location_on_rounded,
                   isDark: isDark,
                   maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedCity,
+                  decoration: InputDecoration(
+                    labelText: 'city'.tr(),
+                    prefixIcon: const Icon(Icons.location_city_rounded,
+                        color: AppTheme.primaryRed, size: 20),
+                    filled: true,
+                    fillColor: isDark
+                        ? Colors.white.withOpacity(0.04)
+                        : Colors.grey.withOpacity(0.04),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : Colors.grey.withOpacity(0.15),
+                          width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                          color: AppTheme.primaryRed.withOpacity(0.6),
+                          width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                  ),
+                  items: _cities
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedCity = v),
+                  validator: (v) => v == null ? 'required'.tr() : null,
                 ),
 
                 const SizedBox(height: 20),

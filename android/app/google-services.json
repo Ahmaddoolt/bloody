@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "233119449462",
+    "project_id": "bookapp-2cf1b",
+    "storage_bucket": "bookapp-2cf1b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:233119449462:android:14673573f5309d0b8cfa57",
+        "android_client_info": {
+          "package_name": "com.clover.wareed"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbi93BduYaMFqF4smJFfdlU-zCTjmK4vk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

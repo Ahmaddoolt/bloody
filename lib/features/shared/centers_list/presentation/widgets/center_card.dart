@@ -14,6 +14,7 @@ class CenterCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final Function(Map<String, dynamic>) onViewStock;
+  final VoidCallback? onNotifyDonors;
 
   const CenterCard({
     super.key,
@@ -23,6 +24,7 @@ class CenterCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onViewStock,
+    this.onNotifyDonors,
   });
 
   Future<void> _makeCall(String? phone) async {
@@ -232,6 +234,15 @@ class CenterCard extends StatelessWidget {
                       onPressed: () =>
                           _openMap(center['latitude'], center['longitude']),
                     ),
+                    if (isSuperAdmin && onNotifyDonors != null) ...[
+                      const SizedBox(width: 8),
+                      _IconActionButton(
+                        icon: Icons.campaign_rounded,
+                        color: Colors.deepOrange,
+                        tooltip: 'Notify Donors',
+                        onPressed: onNotifyDonors!,
+                      ),
+                    ],
                   ],
                 ),
               ),

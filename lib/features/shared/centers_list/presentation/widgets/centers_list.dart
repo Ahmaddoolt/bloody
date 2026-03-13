@@ -16,6 +16,7 @@ class CentersList extends StatelessWidget {
   final Function(String) onDelete;
   final Function(Map<String, dynamic>) onViewStock;
   final RefreshCallback onRefresh;
+  final Function(Map<String, dynamic>)? onNotifyDonors;
 
   const CentersList({
     super.key,
@@ -28,6 +29,7 @@ class CentersList extends StatelessWidget {
     required this.onDelete,
     required this.onViewStock,
     required this.onRefresh,
+    this.onNotifyDonors,
   });
 
   @override
@@ -97,6 +99,7 @@ class CentersList extends StatelessWidget {
             onEdit: () => onEdit(center),
             onDelete: () => onDelete(center['id']),
             onViewStock: onViewStock,
+            onNotifyDonors: onNotifyDonors != null ? () => onNotifyDonors!(center) : null,
           );
         },
       ),
