@@ -9,7 +9,9 @@ class AuthErrorMapper {
       return _mapAuthMessage(error.message);
     }
     final msg = error.toString().toLowerCase();
-    if (msg.contains('socket') || msg.contains('network') || msg.contains('connection')) {
+    if (msg.contains('socket') ||
+        msg.contains('network') ||
+        msg.contains('connection')) {
       return 'auth_error_network'.tr();
     }
     return 'login_failed'.tr();
@@ -23,7 +25,9 @@ class AuthErrorMapper {
     if (lower.contains('email not confirmed')) {
       return 'auth_error_email_not_confirmed'.tr();
     }
-    if (lower.contains('already registered') || lower.contains('already been registered')) {
+    if (lower.contains('already registered') ||
+        lower.contains('already been registered') ||
+        lower.contains('user_already_exists')) {
       return 'auth_error_already_registered'.tr();
     }
     if (lower.contains('too many requests') || lower.contains('rate limit')) {
@@ -32,6 +36,6 @@ class AuthErrorMapper {
     if (lower.contains('network') || lower.contains('socket')) {
       return 'auth_error_network'.tr();
     }
-    return message;
+    return 'login_failed'.tr();
   }
 }

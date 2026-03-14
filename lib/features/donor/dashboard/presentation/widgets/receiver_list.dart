@@ -2,11 +2,8 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_colors.dart';
-import '../../../../../core/theme/app_spacing.dart';
-import '../../../../../core/theme/app_typography.dart';
-import '../../../../../core/widgets/custom_loader.dart';
-import '../../../../../core/widgets/user_card.dart';
-import '../../../../../references/button_patterns.dart';
+import '../../../../../core/widgets/app_loading_indicator.dart';
+import 'receiver_card.dart';
 
 class ReceiverList extends StatelessWidget {
   final List<Map<String, dynamic>> items;
@@ -36,19 +33,18 @@ class ReceiverList extends StatelessWidget {
       color: AppColors.accent,
       child: ListView.builder(
         controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
         itemCount: items.length + (hasMore ? 1 : 0),
         itemBuilder: (ctx, i) {
           if (i == items.length) {
             return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: CustomLoader(size: 28),
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: AppLoadingIndicator(size: 24),
             );
           }
           final item = items[i];
-          return UserCard(
+          return ReceiverCard(
             userData: item,
-            onTap: () {},
             onCall: () => onCall(item['phone']),
           );
         },
@@ -66,21 +62,22 @@ class _BloodTypeMissing extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(AppSpacing.xl),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.bloodtype_outlined,
-              size: 64,
-              color: colors.onSurface.withValues(alpha: 0.3),
+              size: 56,
+              color: colors.onSurface.withOpacity(0.3),
             ),
-            SizedBox(height: AppSpacing.md),
+            const SizedBox(height: 12),
             Text(
               'blood_type_missing'.tr(),
               textAlign: TextAlign.center,
-              style: AppTypography.bodyMedium.copyWith(
-                color: colors.onSurface.withValues(alpha: 0.5),
+              style: TextStyle(
+                fontSize: 14,
+                color: colors.onSurface.withOpacity(0.5),
               ),
             ),
           ],
@@ -112,25 +109,26 @@ class _EmptyReceivers extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 90,
-                      height: 90,
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.08),
+                        color: Colors.green.withOpacity(0.08),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.check_circle_outline,
-                        size: 48,
+                        size: 36,
                         color: Colors.green,
                       ),
                     ),
-                    SizedBox(height: AppSpacing.lg),
+                    const SizedBox(height: 16),
                     Text(
                       'no_receivers_nearby'.tr(),
                       textAlign: TextAlign.center,
-                      style: AppTypography.bodyMedium.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colors.onSurface.withValues(alpha: 0.6),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurface.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -154,44 +152,50 @@ class DonorErrorState extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(AppSpacing.xl),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 80,
-              height: 80,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                color: colors.error.withValues(alpha: 0.1),
+                color: colors.error.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.cloud_off_rounded,
-                size: 40,
+                size: 32,
                 color: colors.error,
               ),
             ),
-            SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: 16),
             Text(
               'error_loading'.tr(),
-              style: AppTypography.titleLarge.copyWith(
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
                 color: colors.onSurface,
               ),
             ),
-            SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: 8),
             Text(
               'check_connection'.tr(),
-              style: AppTypography.bodyMedium.copyWith(
-                color: colors.onSurface.withValues(alpha: 0.5),
+              style: TextStyle(
+                fontSize: 13,
+                color: colors.onSurface.withOpacity(0.5),
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: AppSpacing.lg),
-            AppButton(
-              label: 'retry'.tr(),
-              icon: Icons.refresh_rounded,
-              isExpanded: false,
+            const SizedBox(height: 20),
+            FilledButton.icon(
               onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: Text('retry'.tr()),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              ),
             ),
           ],
         ),

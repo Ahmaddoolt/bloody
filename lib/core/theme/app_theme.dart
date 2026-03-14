@@ -127,9 +127,6 @@ class AppTheme {
         // Error
         error: const Color(0xFFFF6B6B),
         onError: Colors.black,
-        // Background
-        background: darkBackground,
-        onBackground: const Color(0xFFEDE0E0),
         // Outline
         outline: darkDivider,
       ),

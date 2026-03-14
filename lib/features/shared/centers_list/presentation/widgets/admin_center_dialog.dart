@@ -1,25 +1,27 @@
 // file: lib/shared/centers_list/presentation/widgets/admin_center_dialog.dart
+import 'package:bloody/core/constants/app_constants.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/widgets/custom_loader.dart';
+import '../providers/centers_provider.dart';
 import '../screens/location_picker_screen.dart';
 
-class AdminCenterDialog extends StatefulWidget {
+class AdminCenterDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? center;
   final VoidCallback onSuccess;
 
   const AdminCenterDialog({super.key, this.center, required this.onSuccess});
 
   @override
-  State<AdminCenterDialog> createState() => _AdminCenterDialogState();
+  ConsumerState<AdminCenterDialog> createState() => _AdminCenterDialogState();
 }
 
-class _AdminCenterDialogState extends State<AdminCenterDialog> {
+class _AdminCenterDialogState extends ConsumerState<AdminCenterDialog> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameCtrl;
   late TextEditingController _addrCtrl;
@@ -32,20 +34,16 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
   bool _isGeocoding = false;
   String? _selectedCity;
 
-  static const _cities = [
-    'Damascus', 'Aleppo', 'Homs', 'Hama', 'Latakia', 'Tartus', 'Idlib',
-    'Daraa', 'As-Suwayda', 'Quneitra', 'Deir ez-Zor', 'Al-Hasakah',
-    'Raqqa', 'Rif Dimashq',
-  ];
-
   @override
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.center?['name'] ?? '');
     _addrCtrl = TextEditingController(text: widget.center?['address'] ?? '');
     _phoneCtrl = TextEditingController(text: widget.center?['phone'] ?? '');
-    _latCtrl = TextEditingController(text: widget.center?['latitude']?.toString() ?? '');
-    _lngCtrl = TextEditingController(text: widget.center?['longitude']?.toString() ?? '');
+    _latCtrl = TextEditingController(
+        text: widget.center?['latitude']?.toString() ?? '');
+    _lngCtrl = TextEditingController(
+        text: widget.center?['longitude']?.toString() ?? '');
     _emailCtrl = TextEditingController();
     _selectedCity = widget.center?['city'];
   }
@@ -67,8 +65,10 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
     final double? lng = double.tryParse(_lngCtrl.text);
     if (lat != null && lng != null) initialPos = LatLng(lat, lng);
 
-    final LatLng? result = await Navigator.push(context,
-        MaterialPageRoute(builder: (_) => LocationPickerScreen(initialLocation: initialPos)));
+    final LatLng? result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => LocationPickerScreen(initialLocation: initialPos)));
 
     if (result != null) {
       setState(() {
@@ -77,13 +77,16 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
         _isGeocoding = true;
       });
       try {
-        final placemarks = await placemarkFromCoordinates(result.latitude, result.longitude);
+        final placemarks =
+            await placemarkFromCoordinates(result.latitude, result.longitude);
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
           final addr = [p.street, p.subLocality, p.locality, p.country]
-              .where((e) => e != null && e!.isNotEmpty)
+              .where((e) => e != null && e.isNotEmpty)
               .join(', ');
-          if (_addrCtrl.text.isEmpty || widget.center == null) _addrCtrl.text = addr;
+          if (_addrCtrl.text.isEmpty || widget.center == null) {
+            _addrCtrl.text = addr;
+          }
         }
       } catch (_) {
       } finally {
@@ -95,45 +98,34 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
-    final supabase = Supabase.instance.client;
 
-    try {
-      String? adminId;
-      if (_emailCtrl.text.isNotEmpty) {
-        final user = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('email', _emailCtrl.text.trim())
-            .maybeSingle();
-        if (user != null) {
-          adminId = user['id'];
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text('email_not_found'.tr())));
-            setState(() => _isSaving = false);
-            return;
-          }
-        }
-      }
+    final notifier = ref.read(centersProvider.notifier);
+    final isEditing = widget.center != null;
 
-      final data = <String, dynamic>{
-        'name': _nameCtrl.text.trim(),
-        'address': _addrCtrl.text.trim(),
-        'phone': _phoneCtrl.text.trim(),
-        'latitude': double.tryParse(_latCtrl.text),
-        'longitude': double.tryParse(_lngCtrl.text),
-        'city': _selectedCity,
-      };
-      if (adminId != null) data['admin_id'] = adminId;
+    final success = isEditing
+        ? await notifier.updateCenter(
+            id: widget.center!['id'],
+            name: _nameCtrl.text,
+            address: _addrCtrl.text,
+            city: _selectedCity,
+            phone: _phoneCtrl.text.isEmpty ? null : _phoneCtrl.text,
+            latitude: double.tryParse(_latCtrl.text),
+            longitude: double.tryParse(_lngCtrl.text),
+            adminEmail: _emailCtrl.text.isEmpty ? null : _emailCtrl.text,
+          )
+        : await notifier.createCenter(
+            name: _nameCtrl.text,
+            address: _addrCtrl.text,
+            city: _selectedCity,
+            phone: _phoneCtrl.text.isEmpty ? null : _phoneCtrl.text,
+            latitude: double.tryParse(_latCtrl.text),
+            longitude: double.tryParse(_lngCtrl.text),
+            adminEmail: _emailCtrl.text.isEmpty ? null : _emailCtrl.text,
+          );
 
-      if (widget.center == null) {
-        await supabase.from('centers').insert(data);
-      } else {
-        await supabase.from('centers').update(data).eq('id', widget.center!['id']);
-      }
-
-      if (mounted) {
+    if (mounted) {
+      setState(() => _isSaving = false);
+      if (success) {
         widget.onSuccess();
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -141,17 +133,19 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
             content: Text('success'.tr()),
             backgroundColor: const Color(0xFF2E7D32),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.all(16),
           ),
         );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_emailCtrl.text.isNotEmpty
+              ? 'email_not_found'.tr()
+              : 'error_saving'.tr()),
+          backgroundColor: Colors.red,
+        ));
       }
-    } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('error_saving'.tr()), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -187,7 +181,9 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      widget.center == null ? 'add_center'.tr() : 'edit_center'.tr(),
+                      widget.center == null
+                          ? 'add_center'.tr()
+                          : 'edit_center'.tr(),
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -230,11 +226,13 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                   onTap: _pickLocation,
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 14),
                     decoration: BoxDecoration(
                       color: Colors.blue.withOpacity(isDark ? 0.12 : 0.06),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.withOpacity(0.25), width: 1),
+                      border: Border.all(
+                          color: Colors.blue.withOpacity(0.25), width: 1),
                     ),
                     child: Row(
                       children: [
@@ -245,7 +243,8 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                             color: Colors.blue.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(Icons.map_rounded, color: Colors.blue, size: 20),
+                          child: const Icon(Icons.map_rounded,
+                              color: Colors.blue, size: 20),
                         ),
                         const SizedBox(width: 12),
                         Text(
@@ -262,7 +261,8 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                           Text(
                             '${double.tryParse(_latCtrl.text)?.toStringAsFixed(3)}, '
                             '${double.tryParse(_lngCtrl.text)?.toStringAsFixed(3)}',
-                            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey[500]),
                           ),
                       ],
                     ),
@@ -271,7 +271,8 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                 if (_isGeocoding)
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
-                    child: LinearProgressIndicator(minHeight: 2, color: AppTheme.primaryRed),
+                    child: LinearProgressIndicator(
+                        minHeight: 2, color: AppTheme.primaryRed),
                   ),
                 const SizedBox(height: 10),
                 _buildField(
@@ -284,7 +285,7 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _selectedCity,
+                  initialValue: _selectedCity,
                   decoration: InputDecoration(
                     labelText: 'city'.tr(),
                     prefixIcon: const Icon(Icons.location_city_rounded,
@@ -314,8 +315,9 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 14),
                   ),
-                  items: _cities
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  items: AppCities.syrianCities
+                      .map((c) =>
+                          DropdownMenuItem(value: c, child: Text(c.tr())))
                       .toList(),
                   onChanged: (v) => setState(() => _selectedCity = v),
                   validator: (v) => v == null ? 'required'.tr() : null,
@@ -324,7 +326,8 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                 const SizedBox(height: 20),
 
                 // ── Section: Manager ──────────────────
-                _SectionLabel(label: 'assign_manager_optional'.tr(), isDark: isDark),
+                _SectionLabel(
+                    label: 'assign_manager_optional'.tr(), isDark: isDark),
                 const SizedBox(height: 10),
                 _buildField(
                   context,
@@ -347,11 +350,17 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          side: BorderSide(
+                              color: isDark
+                                  ? Colors.grey[700]!
+                                  : Colors.grey[300]!),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                         child: Text('cancel'.tr(),
-                            style: TextStyle(color: isDark ? Colors.white60 : Colors.black54)),
+                            style: TextStyle(
+                                color:
+                                    isDark ? Colors.white60 : Colors.black54)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -364,15 +373,18 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 3,
                           shadowColor: AppTheme.primaryRed.withOpacity(0.35),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                         child: _isSaving
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CustomLoader(size: 20, color: Colors.white))
+                                child:
+                                    CustomLoader(size: 20, color: Colors.white))
                             : Text('save'.tr(),
-                                style: const TextStyle(fontWeight: FontWeight.bold)),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -408,7 +420,9 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
         helperText: helperText,
         prefixIcon: Icon(icon, color: color, size: 20),
         filled: true,
-        fillColor: isDark ? Colors.white.withOpacity(0.04) : Colors.grey.withOpacity(0.04),
+        fillColor: isDark
+            ? Colors.white.withOpacity(0.04)
+            : Colors.grey.withOpacity(0.04),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -416,14 +430,17 @@ class _AdminCenterDialogState extends State<AdminCenterDialog> {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-              color: isDark ? Colors.white.withOpacity(0.08) : Colors.grey.withOpacity(0.15),
+              color: isDark
+                  ? Colors.white.withOpacity(0.08)
+                  : Colors.grey.withOpacity(0.15),
               width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: color.withOpacity(0.6), width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }
@@ -440,8 +457,9 @@ class _SectionLabel extends StatelessWidget {
       Container(
           width: 3,
           height: 14,
-          decoration:
-              BoxDecoration(color: AppTheme.primaryRed, borderRadius: BorderRadius.circular(2))),
+          decoration: BoxDecoration(
+              color: AppTheme.primaryRed,
+              borderRadius: BorderRadius.circular(2))),
       const SizedBox(width: 8),
       Text(label,
           style: TextStyle(

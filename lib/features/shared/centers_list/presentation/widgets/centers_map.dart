@@ -13,13 +13,14 @@ class CentersMap extends StatelessWidget {
     return GoogleMap(
       initialCameraPosition: const CameraPosition(
         target: _defaultLocation,
-        zoom: 11,
+        zoom: 12,
       ),
       markers: markers,
       myLocationEnabled: true,
       myLocationButtonEnabled: true,
       zoomControlsEnabled: false,
       mapToolbarEnabled: false,
+      minMaxZoomPreference: const MinMaxZoomPreference(10, 18),
     );
   }
 }

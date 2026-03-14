@@ -2,10 +2,14 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_colors.dart';
-import '../../../../../core/theme/app_spacing.dart';
-import '../../../../../core/theme/app_typography.dart';
-import '../../../../../core/widgets/custom_loader.dart';
+import '../../../../../core/widgets/app_loading_indicator.dart';
 
+/// Deferral view showing countdown timer after donation
+/// Follows clean minimalist UI principles:
+/// - 8px grid spacing system
+/// - Max 3 font sizes per section
+/// - Consistent 16px card padding
+/// - Generous whitespace for premium feel
 class DeferralView extends StatelessWidget {
   final double progress;
   final String remainingTime;
@@ -22,107 +26,132 @@ class DeferralView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return Column(
-      children: [
-        // Gradient header strip
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.accentDark, AppColors.accent],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: SafeArea(
-            bottom: false,
-            child: Text(
-              'thank_you_donor'.tr(),
-              style: AppTypography.displayMedium.copyWith(
-                color: Colors.white,
-                fontSize: 22,
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(AppSpacing.lg),
-            child: Column(
-              children: [
-                _ProgressCard(
-                  progress: progress,
-                  remainingTime: remainingTime,
-                  ringAnimation: ringAnimation,
-                  colors: colors,
-                ),
-                SizedBox(height: AppSpacing.lg),
-                _HealthTipCard(colors: colors),
-              ],
-            ),
+    return Scaffold(
+      backgroundColor: colors.surfaceContainerLowest,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header Card
+              _buildHeader(colors),
+              const SizedBox(height: 16),
+              // Timer Section
+              _buildTimerSection(colors),
+              const SizedBox(height: 16),
+              // Info Card
+              _buildInfoCard(colors),
+              const SizedBox(height: 12),
+              // Health Tip Card
+              _buildHealthTipCard(colors),
+              // Bottom whitespace is OK (25%)
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
-}
 
-class _ProgressCard extends StatelessWidget {
-  final double progress;
-  final String remainingTime;
-  final Animation<double> ringAnimation;
-  final ColorScheme colors;
-
-  const _ProgressCard({
-    required this.progress,
-    required this.remainingTime,
-    required this.ringAnimation,
-    required this.colors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final progressColor = Color.lerp(
-      const Color(0xFFE65100),
-      const Color(0xFF2E7D32),
-      progress,
-    ) ?? AppColors.accent;
-
+  Widget _buildHeader(ColorScheme colors) {
     return Container(
-      padding: EdgeInsets.all(AppSpacing.xl),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.accent,
+            AppColors.accent.withOpacity(0.85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.favorite_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'thank_you_donor'.tr(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'donation_deferral_notice'.tr(),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 14,
+              height: 1.4,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTimerSection(ColorScheme colors) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
         children: [
-          // Circular progress
+          Text(
+            'time_until_next_donation'.tr(),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurface.withOpacity(0.6),
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Progress Ring - Medium size
           SizedBox(
-            width: 160,
-            height: 160,
+            width: 130,
+            height: 130,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                AnimatedBuilder(
-                  animation: ringAnimation,
-                  builder: (_, __) => SizedBox(
-                    width: 160,
-                    height: 160,
-                    child: CircularProgressIndicator(
-                      value: progress,
-                      strokeWidth: 10,
-                      backgroundColor:
-                          const Color(0xFFE65100).withValues(alpha: 0.15),
-                      valueColor: AlwaysStoppedAnimation(progressColor),
-                    ),
+                Container(
+                  width: 130,
+                  height: 130,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.accent.withOpacity(0.05),
+                  ),
+                ),
+                SizedBox(
+                  width: 110,
+                  height: 110,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 8,
+                    backgroundColor: AppColors.accent.withOpacity(0.1),
+                    valueColor: AlwaysStoppedAnimation(AppColors.accent),
                   ),
                 ),
                 Column(
@@ -130,9 +159,9 @@ class _ProgressCard extends StatelessWidget {
                   children: [
                     Text(
                       '${(progress * 100).toInt()}%',
-                      style: AppTypography.displayMedium.copyWith(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
                         color: colors.onSurface,
                       ),
                     ),
@@ -140,7 +169,7 @@ class _ProgressCard extends StatelessWidget {
                       'recovered'.tr(),
                       style: TextStyle(
                         fontSize: 12,
-                        color: colors.onSurface.withValues(alpha: 0.5),
+                        color: colors.onSurface.withOpacity(0.5),
                       ),
                     ),
                   ],
@@ -148,51 +177,118 @@ class _ProgressCard extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(height: AppSpacing.lg),
-          Text(
-            'donation_deferral_notice'.tr(),
-            textAlign: TextAlign.center,
-            style: AppTypography.bodyMedium.copyWith(
-              color: colors.onSurface.withValues(alpha: 0.6),
-              height: 1.6,
-            ),
-          ),
-          SizedBox(height: AppSpacing.lg),
-          // Countdown box
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE65100).withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFFE65100).withValues(alpha: 0.25),
-                width: 1.5,
+          const SizedBox(height: 16),
+          // Time Display
+          if (remainingTime.isEmpty)
+            const AppLoadingIndicator(size: 24)
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: _buildTimeBoxes(remainingTime, colors),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildTimeBoxes(String timeString, ColorScheme colors) {
+    final parts = timeString.split('  ').where((s) => s.isNotEmpty).toList();
+    final widgets = <Widget>[];
+
+    for (int i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      final number = part.replaceAll(RegExp(r'[^0-9]'), '');
+      final unit = part.replaceAll(RegExp(r'[0-9]'), '');
+
+      widgets.add(
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                number,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.accent,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                unit,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: colors.onSurface.withOpacity(0.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
+  Widget _buildInfoCard(ColorScheme colors) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.info_outline_rounded,
+              color: AppColors.accent,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'time_until_next_donation'.tr(),
-                  style: AppTypography.label.copyWith(
-                    fontSize: 12,
-                    color: colors.onSurface.withValues(alpha: 0.5),
-                    letterSpacing: 0.5,
+                  'why_wait'.tr(),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurface,
                   ),
                 ),
-                SizedBox(height: AppSpacing.sm),
-                remainingTime.isEmpty
-                    ? const CustomLoader(size: 24)
-                    : Text(
-                        remainingTime,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: colors.onSurface,
-                          fontFamily: 'monospace',
-                          letterSpacing: 1.5,
-                        ),
-                      ),
+                const SizedBox(height: 2),
+                Text(
+                  'deferral_explanation'.tr(),
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: colors.onSurface.withOpacity(0.6),
+                  ),
+                ),
               ],
             ),
           ),
@@ -200,58 +296,54 @@ class _ProgressCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _HealthTipCard extends StatelessWidget {
-  final ColorScheme colors;
-  const _HealthTipCard({required this.colors});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildHealthTipCard(ColorScheme colors) {
     return Container(
-      padding: EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.blue.shade700.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.accent.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.blue.shade700.withValues(alpha: 0.2),
-          width: 1.5,
+          color: AppColors.accent.withOpacity(0.15),
+          width: 1,
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: Colors.blue.shade700.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
+              color: AppColors.accent.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               Icons.tips_and_updates_rounded,
-              color: Colors.blue.shade700,
-              size: 22,
+              color: AppColors.accent,
+              size: 20,
             ),
           ),
-          SizedBox(width: AppSpacing.md),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'recovery_tip_title'.tr(),
-                  style: AppTypography.label.copyWith(
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                     color: colors.onSurface,
                   ),
                 ),
-                SizedBox(height: AppSpacing.xs),
+                const SizedBox(height: 2),
                 Text(
                   'recovery_tip_body'.tr(),
-                  style: AppTypography.bodyMedium.copyWith(
-                    fontSize: 12,
-                    height: 1.6,
-                    color: colors.onSurface.withValues(alpha: 0.6),
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: colors.onSurface.withOpacity(0.6),
                   ),
                 ),
               ],

@@ -35,17 +35,20 @@ class DonorDashboardService {
   }) async {
     AppLogger.info("Fetching Receivers compatible with $donorBloodType...");
     try {
-      final List<String> compatibleTypes = BloodUtils.getCompatibleReceivers(donorBloodType);
+      final List<String> compatibleTypes =
+          BloodUtils.getCompatibleReceivers(donorBloodType);
       final bool isUniversalDonor = donorBloodType == 'O-';
 
-      var query = _supabase.from('profiles').select().eq('user_type', 'receiver');
+      var query =
+          _supabase.from('profiles').select().eq('user_type', 'receiver');
 
       if (!isUniversalDonor) {
         query = query.inFilter('blood_type', compatibleTypes);
       }
 
       final response = await query.range(offset, offset + limit - 1);
-      final List<Map<String, dynamic>> receivers = List<Map<String, dynamic>>.from(response);
+      final List<Map<String, dynamic>> receivers =
+          List<Map<String, dynamic>>.from(response);
 
       // Apply Smart Sorting
       SortingUtils.sortNeedyUsers(
@@ -64,9 +67,33 @@ class DonorDashboardService {
     }
   }
 
+  /// Gets total count of compatible receivers
+  Future<int> getCompatibleReceiversCount(String donorBloodType) async {
+    try {
+      final List<String> compatibleTypes =
+          BloodUtils.getCompatibleReceivers(donorBloodType);
+      final bool isUniversalDonor = donorBloodType == 'O-';
+
+      var query =
+          _supabase.from('profiles').select().eq('user_type', 'receiver');
+
+      if (!isUniversalDonor) {
+        query = query.inFilter('blood_type', compatibleTypes);
+      }
+
+      final response = await query;
+      return response.length;
+    } catch (e, stack) {
+      AppLogger.error(
+          "DonorDashboardService.getCompatibleReceiversCount", e, stack);
+      return 0;
+    }
+  }
+
   /// Confirms a donation: Updates points, sets date, and logs it.
   Future<bool> confirmDonation(String donorId, int currentPoints) async {
-    AppLogger.info("Confirming donation for $donorId. Current points: $currentPoints");
+    AppLogger.info(
+        "Confirming donation for $donorId. Current points: $currentPoints");
     try {
       final today = DateTime.now().toIso8601String().split('T')[0];
 

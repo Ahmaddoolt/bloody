@@ -1,39 +1,36 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_spacing.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/theme/app_typography.dart';
+import '../../../../../core/widgets/app_loading_indicator.dart';
 import '../../../../../core/widgets/custom_loader.dart';
-import '../../data/leaderboard_service.dart';
-import '../widgets/donor_detail_sheet.dart';
+import '../../../../../core/widgets/info_bottom_sheet.dart';
+import '../providers/leaderboard_provider.dart';
 import '../widgets/podium_section.dart';
 import '../widgets/rank_list_item.dart';
 
-class LeaderboardScreen extends StatefulWidget {
+class LeaderboardScreen extends ConsumerStatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
+  ConsumerState<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
-class _LeaderboardScreenState extends State<LeaderboardScreen> {
-  final _service = LeaderboardService();
+class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
   final _scrollController = ScrollController();
-  final List<Map<String, dynamic>> _leaders = [];
-
-  bool _isInitialLoading = true;
-  bool _isLoadingMore = false;
-  bool _hasMore = true;
-  final int _limit = 20;
-  int _offset = 0;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _fetchLeaders();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(leaderboardProvider.notifier).fetchDonors();
+    });
   }
 
   @override
@@ -43,41 +40,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 100) {
-      _fetchLeaders(loadMore: true);
-    }
-  }
-
-  Future<void> _fetchLeaders({bool loadMore = false}) async {
-    if (loadMore && (_isLoadingMore || !_hasMore)) return;
-    setState(() {
-      if (loadMore) {
-        _isLoadingMore = true;
-      } else {
-        if (_leaders.isEmpty) _isInitialLoading = true;
-        _offset = 0;
-        _hasMore = true;
-        _leaders.clear();
-      }
-    });
-    try {
-      final data = await _service.fetchTopDonors(offset: _offset, limit: _limit);
-      if (mounted) {
-        if (data.length < _limit) _hasMore = false;
-        setState(() {
-          _leaders.addAll(data);
-          _offset += _limit;
-          _isLoadingMore = false;
-          _isInitialLoading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isLoadingMore = false;
-          _isInitialLoading = false;
-        });
+    final state = ref.read(leaderboardProvider);
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      if (!state.isLoadingMore && state.hasMore) {
+        ref.read(leaderboardProvider.notifier).loadMore();
       }
     }
   }
@@ -88,33 +54,108 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     if (await canLaunchUrl(uri)) launchUrl(uri);
   }
 
+  VoidCallback? _createCallCallback(String? phone) {
+    if (phone == null || phone.isEmpty) return null;
+    return () => _makeCall(phone);
+  }
+
+  void _showDonorBottomSheet(Map<String, dynamic> donor, int rank) {
+    final rawName = donor['username'] ?? donor['email'];
+    final name = (rawName != null && !rawName.toString().toLowerCase().contains('unknown'))
+        ? (rawName as String).split('@')[0]
+        : 'donor'.tr();
+    final bloodType = donor['blood_type'] ?? '?';
+    final phone = donor['phone'] as String?;
+    final points = (donor['points'] as num? ?? 0).toInt();
+    final city = donor['city'] as String?;
+
+    showInfoBottomSheet(
+      context,
+      title: name,
+      subtitle: '$bloodType ${'blood_type'.tr()}',
+      avatar: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.accent,
+              AppColors.accent.withOpacity(0.7),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: Text(
+            bloodType,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+      infoRows: [
+        if (city != null)
+          InfoRow(
+            icon: Icons.location_on_outlined,
+            text: context.tr(city),
+          ),
+        InfoRow(
+          icon: Icons.bolt_rounded,
+          text: '$points ${'points'.tr()}',
+          color: const Color(0xFF2E7D32),
+        ),
+      ],
+      actions: [
+        SheetAction(
+          label: 'close'.tr(),
+          onPressed: () => Navigator.pop(context),
+          isOutlined: true,
+        ),
+        if (phone != null)
+          SheetAction(
+            label: 'call'.tr(),
+            icon: Icons.phone_rounded,
+            onPressed: () {
+              _makeCall(phone);
+              Navigator.pop(context);
+            },
+            backgroundColor: AppColors.accent,
+          ),
+      ],
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(leaderboardProvider);
+    final currentUserRankAsync = ref.watch(currentUserRankProvider);
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: _buildAppBar(),
-      body: _isInitialLoading
-          ? const CustomLoader()
-          : _leaders.isEmpty
+      appBar: _buildAppBar(state, currentUserRankAsync, colorScheme),
+      body: state.isLoading && state.donors.isEmpty
+          ? const Center(child: AppLoadingIndicator())
+          : state.donors.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  onRefresh: () async => _fetchLeaders(loadMore: false),
+                  onRefresh: () async => ref.read(leaderboardProvider.notifier).refresh(),
                   color: AppTheme.gold,
                   child: CustomScrollView(
                     controller: _scrollController,
                     slivers: [
                       PodiumSection(
-                        leaders: _leaders,
-                        onTap: (donor, rank) => showDonorDetailSheet(
-                          context,
-                          donor: donor,
-                          rank: rank,
-                          onCall: _makeCall,
-                        ),
+                        leaders: state.donors.map((d) => d.toJson()).toList(),
+                        onTap: (donor, rank) => _showDonorBottomSheet(donor, rank),
                       ),
-                      _buildRankList(),
-                      if (_hasMore)
+                      _buildRankList(state),
+                      if (state.hasMore)
                         const SliverToBoxAdapter(
                           child: Padding(
                             padding: EdgeInsets.symmetric(vertical: 24),
@@ -128,26 +169,124 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(
+    LeaderboardState state,
+    AsyncValue<int?> currentUserRankAsync,
+    ColorScheme colorScheme,
+  ) {
     return AppBar(
-      centerTitle: true,
+      backgroundColor: AppColors.accent,
+      foregroundColor: Colors.white,
       elevation: 0,
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.emoji_events_rounded, color: AppTheme.gold, size: 22),
-          SizedBox(width: AppSpacing.sm),
-          Text(
-            'legend_donors'.tr(),
-            style: AppTypography.titleLarge.copyWith(
-              color: Colors.white,
-              fontSize: 18,
+      scrolledUnderElevation: 0,
+      toolbarHeight: 78,
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.accentDark, AppColors.accent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Align(
+            alignment: Alignment.center,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.emoji_events_rounded,
+                        color: AppTheme.gold,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'legend_donors'.tr(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Total donors badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.people_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${state.totalCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // User rank badge
+                      currentUserRankAsync.when(
+                        data: (rank) => rank != null
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.military_tech_rounded,
+                                      color: AppTheme.gold,
+                                      size: 14,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$rank',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+        ),
       ),
     );
   }
@@ -181,8 +320,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildRankList() {
-    if (_leaders.length <= 3) return const SliverToBoxAdapter(child: SizedBox.shrink());
+  Widget _buildRankList(LeaderboardState state) {
+    if (state.donors.length <= 3) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
 
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
@@ -190,19 +331,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         delegate: SliverChildBuilderDelegate(
           (ctx, index) {
             final realIndex = index + 3;
-            if (realIndex >= _leaders.length) return null;
+            if (realIndex >= state.donors.length) return null;
+            final donor = state.donors[realIndex];
             return RankListItem(
-              donor: _leaders[realIndex],
+              donor: donor.toJson(),
               rank: realIndex + 1,
-              onTap: () => showDonorDetailSheet(
-                context,
-                donor: _leaders[realIndex],
-                rank: realIndex + 1,
-                onCall: _makeCall,
-              ),
+              onCall: _createCallCallback(donor.phone),
             );
           },
-          childCount: _leaders.length - 3,
+          childCount: state.donors.length - 3,
         ),
       ),
     );

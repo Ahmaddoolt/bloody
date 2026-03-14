@@ -33,7 +33,8 @@ class MapFinderService {
   }) async {
     AppLogger.info("Fetching donors compatible with $receiverBloodType...");
     try {
-      final List<String> compatibleDonors = BloodUtils.getCompatibleDonors(receiverBloodType);
+      final List<String> compatibleDonors =
+          BloodUtils.getCompatibleDonors(receiverBloodType);
       final bool isUniversalReceiver = compatibleDonors.length >= 8;
 
       var query = _supabase
@@ -47,7 +48,8 @@ class MapFinderService {
       }
 
       final response = await query.range(offset, offset + limit - 1);
-      final List<Map<String, dynamic>> donors = List<Map<String, dynamic>>.from(response);
+      final List<Map<String, dynamic>> donors =
+          List<Map<String, dynamic>>.from(response);
 
       // Client-side deferral filter (donated < 90 days ago)
       final now = DateTime.now();
@@ -79,7 +81,11 @@ class MapFinderService {
     AppLogger.info("Confirming donation from Donor ID: $donorId");
     try {
       final today = DateTime.now().toIso8601String().split('T')[0];
-      final data = await _supabase.from('profiles').select('points').eq('id', donorId).single();
+      final data = await _supabase
+          .from('profiles')
+          .select('points')
+          .eq('id', donorId)
+          .single();
       final currentPoints = (data['points'] as num?)?.toInt() ?? 0;
 
       await _supabase.from('profiles').update({
@@ -87,80 +93,15 @@ class MapFinderService {
         'last_donation_date': today,
       }).eq('id', donorId);
 
-      await _supabase.from('donations').insert({'donor_id': donorId, 'status': 'completed'});
+      await _supabase
+          .from('donations')
+          .insert({'donor_id': donorId, 'status': 'completed'});
 
       AppLogger.success("Donation confirmed.");
       return true;
     } catch (e, stack) {
       AppLogger.error("MapFinderService.confirmDonation", e, stack);
       return false;
-    }
-  }
-
-  /// Broadcasts an urgent request to all matching, available,
-  /// non-deferred donors in the same city.
-  /// Returns count notified, or -1 on error.
-  Future<int> sendBroadcastNotification({
-    required String receiverId,
-    required String receiverBloodType,
-    required String receiverCity,
-    required String receiverName,
-  }) async {
-    AppLogger.info("Broadcasting $receiverBloodType request in $receiverCity");
-    try {
-      final compatible = BloodUtils.getCompatibleDonors(receiverBloodType);
-      final isUniversal = compatible.length >= 8;
-      final now = DateTime.now();
-
-      var query = _supabase
-          .from('profiles')
-          .select('id, blood_type, last_donation_date')
-          .eq('user_type', 'donor')
-          .eq('is_available', true)
-          .eq('city', receiverCity)
-          .neq('id', receiverId);
-
-      if (!isUniversal) {
-        query = query.inFilter('blood_type', compatible);
-      }
-
-      final List<dynamic> candidates = await query;
-
-      // Client-side deferral filter
-      final eligible = candidates.where((d) {
-        if (d['last_donation_date'] == null) return true;
-        try {
-          final last = DateTime.parse(d['last_donation_date']);
-          return now.isAfter(last.add(const Duration(days: 90)));
-        } catch (_) {
-          return true;
-        }
-      }).toList();
-
-      if (eligible.isEmpty) {
-        AppLogger.info("No eligible donors for broadcast.");
-        return 0;
-      }
-
-      final notifications = eligible
-          .map<Map<String, dynamic>>((d) => {
-                'user_id': d['id'] as String,
-                'sender_id': receiverId,
-                'type': 'broadcast_request',
-                'title': 'Urgent Blood Request 🩸',
-                'body':
-                    '$receiverName urgently needs $receiverBloodType in $receiverCity. Can you help?',
-                'is_read': false,
-              })
-          .toList();
-
-      await _supabase.from('notifications').insert(notifications);
-
-      AppLogger.success("Broadcast sent to ${eligible.length} donors.");
-      return eligible.length;
-    } catch (e, stack) {
-      AppLogger.error("MapFinderService.sendBroadcastNotification", e, stack);
-      return -1;
     }
   }
 }

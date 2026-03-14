@@ -4,32 +4,31 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/widgets/custom_loader.dart';
+import '../providers/centers_provider.dart';
 import 'center_card.dart';
 
 class CentersList extends StatelessWidget {
-  final List<Map<String, dynamic>> centers;
+  final List<CenterModel> centers;
   final bool isLoading;
   final bool isSuperAdmin;
-  final String? currentUserId;
   final ScrollController scrollController;
-  final Function(Map<String, dynamic>) onEdit;
-  final Function(String) onDelete;
-  final Function(Map<String, dynamic>) onViewStock;
+  final Function(CenterModel)? onEdit;
+  final Function(String)? onDelete;
+  final Function(CenterModel)? onViewStock;
+  final Function(CenterModel)? onViewDetails;
   final RefreshCallback onRefresh;
-  final Function(Map<String, dynamic>)? onNotifyDonors;
 
   const CentersList({
     super.key,
     required this.centers,
     required this.isLoading,
-    required this.isSuperAdmin,
-    required this.currentUserId,
+    this.isSuperAdmin = false,
     required this.scrollController,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onViewStock,
+    this.onEdit,
+    this.onDelete,
+    this.onViewStock,
+    this.onViewDetails,
     required this.onRefresh,
-    this.onNotifyDonors,
   });
 
   @override
@@ -88,18 +87,20 @@ class CentersList extends StatelessWidget {
           if (index == centers.length) {
             return isLoading
                 ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20), child: CustomLoader(size: 28))
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: CustomLoader(size: 28))
                 : const SizedBox.shrink();
           }
           final center = centers[index];
           return CenterCard(
             center: center,
             isSuperAdmin: isSuperAdmin,
-            currentUserId: currentUserId,
-            onEdit: () => onEdit(center),
-            onDelete: () => onDelete(center['id']),
-            onViewStock: onViewStock,
-            onNotifyDonors: onNotifyDonors != null ? () => onNotifyDonors!(center) : null,
+            onEdit: onEdit != null ? () => onEdit!(center) : null,
+            onDelete: onDelete != null ? () => onDelete!(center.id) : null,
+            onViewStock:
+                onViewStock != null ? () => onViewStock!(center) : null,
+            onViewDetails:
+                onViewDetails != null ? () => onViewDetails!(center) : null,
           );
         },
       ),

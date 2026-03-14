@@ -1,24 +1,19 @@
-// file: lib/main.dart
-import 'dart:async';
-
-import 'package:bloody/features/shared/auth/presentation/screens/login_screen.dart';
-import 'package:bloody/features/shared/auth/presentation/screens/onboarding_screen.dart';
-import 'package:bloody/features/shared/auth/presentation/screens/splash_screen.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'firebase_options.dart';
-
-// ✅ NEW CLEAN ARCHITECTURE IMPORTS
-import 'features/admin/home/presentation/screens/admin_home_screen.dart';
 import 'core/constants/supabase_constants.dart';
 import 'core/layout/main_layout.dart';
+import 'core/services/fcm_service.dart';
 import 'core/theme/app_theme.dart';
-import 'core/utils/app_logger.dart';
-import 'core/widgets/custom_loader.dart';
+import 'features/admin/home/presentation/screens/admin_home_screen.dart';
+import 'features/shared/auth/presentation/providers/auth_provider.dart';
+import 'features/shared/auth/presentation/screens/login_screen.dart';
+import 'features/shared/auth/presentation/screens/onboarding_screen.dart';
+import 'features/shared/auth/presentation/screens/splash_screen.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,13 +27,17 @@ Future<void> main() async {
 
   await AppTheme.initTheme();
 
+  FcmService.setupBackgroundHandler();
+
   runApp(
-    EasyLocalization(
-      supportedLocales: const [Locale('en'), Locale('ar')],
-      path: 'assets',
-      fallbackLocale: const Locale('ar'),
-      startLocale: const Locale('ar'),
-      child: const BloodyApp(),
+    ProviderScope(
+      child: EasyLocalization(
+        supportedLocales: const [Locale('en'), Locale('ar')],
+        path: 'assets',
+        fallbackLocale: const Locale('ar'),
+        startLocale: const Locale('ar'),
+        child: const BloodyApp(),
+      ),
     ),
   );
 }
@@ -60,105 +59,50 @@ class BloodyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: mode,
-          home: const SplashScreen(),
+          home: const AuthGate(),
         );
       },
     );
   }
 }
 
-class AuthGate extends StatefulWidget {
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
+  ConsumerState<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
-  bool _isLoading = true;
-  bool _seenOnboarding = false;
-  bool _isAuthenticated = false;
-  bool _isAdmin = false;
-  String _userType = 'receiver';
-
-  late final StreamSubscription<AuthState> _authStateSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeAuth();
-  }
-
-  Future<void> _initializeAuth() async {
-    final prefs = await SharedPreferences.getInstance();
-    _seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
-
-    _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      final session = data.session;
-      if (session == null) {
-        if (mounted) {
-          setState(() {
-            _isAuthenticated = false;
-            _isLoading = false;
-          });
-        }
-      } else {
-        _handleUserSession(session.user);
-      }
-    });
-  }
-
-  Future<void> _handleUserSession(User user) async {
-    if (user.email == 'adminbloody2026@gmail.com') {
-      if (mounted) {
-        setState(() {
-          _isAdmin = true;
-          _isAuthenticated = true;
-          _isLoading = false;
-        });
-      }
-      return;
-    }
-
-    try {
-      final data = await Supabase.instance.client
-          .from('profiles')
-          .select('user_type')
-          .eq('id', user.id)
-          .single();
-
-      if (mounted) {
-        setState(() {
-          _userType = data['user_type'] ?? 'receiver';
-          _isAdmin = false;
-          _isAuthenticated = true;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      AppLogger.error("AuthGate._handleUserSession", e);
-      if (mounted) {
-        setState(() {
-          _userType = 'receiver';
-          _isAdmin = false;
-          _isAuthenticated = true;
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _authStateSubscription.cancel();
-    super.dispose();
-  }
+class _AuthGateState extends ConsumerState<AuthGate> {
+  bool _fcmInitialized = false;
+  bool _hasCompletedInitialLoad = false;
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: CustomLoader());
-    if (!_isAuthenticated) return _seenOnboarding ? const LoginScreen() : const OnboardingScreen();
-    if (_isAdmin) return const AdminHomeScreen();
-    return MainLayout(userType: _userType);
+    final authState = ref.watch(authNotifierProvider);
+
+    // Only show splash on initial app load, not during sign in/out operations
+    if (authState.isLoading && !_hasCompletedInitialLoad) {
+      return const SplashScreen();
+    }
+
+    _hasCompletedInitialLoad = true;
+
+    if (!authState.isAuthenticated) {
+      return authState.hasSeenOnboarding
+          ? const LoginScreen()
+          : const OnboardingScreen();
+    }
+
+    if (!_fcmInitialized) {
+      _fcmInitialized = true;
+      FcmService.initialize();
+    }
+
+    if (authState.isAdmin) {
+      return const AdminHomeScreen();
+    }
+
+    return MainLayout(userType: authState.userType ?? 'receiver');
   }
 }

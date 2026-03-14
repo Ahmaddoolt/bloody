@@ -27,6 +27,17 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyAOqv2nFQuqU3lkE9IPRK62CdEbqbSpL84"/>
+        
+        <!-- Firebase Notification Icon (Required for Xiaomi and Chinese devices) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@android:color/holo_red_dark" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="blood_donation_alerts" />
 
         <activity
             android:name=".MainActivity"

@@ -1,4 +1,5 @@
 // file: lib/core/utils/sorting_utils.dart
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'blood_utils.dart';
@@ -81,6 +82,89 @@ class SortingUtils {
 
       return 0;
     });
+
+    // Print sorted list with priority info
+    _printSortedReceivers(
+      users,
+      donorBloodType: donorBloodType,
+      donorCity: donorCity,
+      donorLat: donorLat,
+      donorLng: donorLng,
+    );
+  }
+
+  /// Prints sorted receivers with priority information to debug console
+  static void _printSortedReceivers(
+    List<Map<String, dynamic>> users, {
+    String? donorBloodType,
+    String? donorCity,
+    double? donorLat,
+    double? donorLng,
+  }) {
+    if (!kDebugMode) return;
+
+    final buffer = StringBuffer();
+    buffer.writeln('');
+    buffer.writeln(
+        '╔═══════════════════════════════════════════════════════════════');
+    buffer.writeln('║  📋 SORTED RECEIVERS LIST (By Priority)');
+    buffer.writeln(
+        '╠═══════════════════════════════════════════════════════════════');
+    buffer.writeln('║  Total: ${users.length} receivers');
+    buffer.writeln(
+        '║  Donor Blood: ${donorBloodType ?? 'N/A'} | City: ${donorCity ?? 'N/A'}');
+    buffer.writeln(
+        '╠═══════════════════════════════════════════════════════════════');
+
+    for (int i = 0; i < users.length; i++) {
+      final user = users[i];
+      final name = user['username'] ?? user['email'] ?? 'Unknown';
+      final bloodType = user['blood_type'] ?? '?';
+      final city = user['city'] ?? 'N/A';
+      final isPriority = user['is_priority'] ?? false;
+
+      // Calculate distance if coordinates available
+      String distanceStr = 'N/A';
+      if (donorLat != null && donorLng != null) {
+        final double? userLat = user['latitude'];
+        final double? userLng = user['longitude'];
+        if (userLat != null && userLng != null) {
+          final dist = calculateDistance(donorLat, donorLng, userLat, userLng);
+          distanceStr = '${dist.toStringAsFixed(1)} km';
+        }
+      }
+
+      // Check compatibility
+      String compatStatus = '❌';
+      if (donorBloodType != null) {
+        final compatibleList =
+            BloodUtils.getCompatibleReceivers(donorBloodType);
+        if (compatibleList.contains(bloodType)) {
+          compatStatus = '✅';
+        }
+      }
+
+      // Check same city
+      String cityStatus = '❌';
+      if (donorCity != null && city == donorCity) {
+        cityStatus = '✅';
+      }
+
+      // Priority indicator
+      String priorityBadge = isPriority ? '⭐ PRIORITY' : '  ';
+
+      buffer.writeln('║  ${(i + 1).toString().padLeft(2)}. $priorityBadge');
+      buffer.writeln('║      Name: $name');
+      buffer.writeln(
+          '║      Blood: $bloodType $compatStatus | City: $city $cityStatus');
+      buffer.writeln('║      Distance: $distanceStr');
+      buffer.writeln(
+          '╟───────────────────────────────────────────────────────────────');
+    }
+
+    buffer.writeln(
+        '╚═══════════════════════════════════════════════════════════════');
+    debugPrint(buffer.toString());
   }
 
   /// Smart Donor Sort Algorithm (For Receivers looking for Donors)
@@ -148,5 +232,41 @@ class SortingUtils {
 
       return 0;
     });
+  }
+
+  /// Prints sorted centers with stock information to debug console
+  static void printSortedCenters(
+    List<Map<String, dynamic>> centers,
+    Map<String, int> stockTotals,
+  ) {
+    if (!kDebugMode) return;
+
+    final buffer = StringBuffer();
+    buffer.writeln('');
+    buffer.writeln(
+        '╔═══════════════════════════════════════════════════════════════');
+    buffer.writeln('║  🏥 SORTED CENTERS LIST (By Stock - Lowest First)');
+    buffer.writeln(
+        '╠═══════════════════════════════════════════════════════════════');
+    buffer.writeln('║  Total: ${centers.length} centers');
+    buffer.writeln(
+        '╠═══════════════════════════════════════════════════════════════');
+
+    for (int i = 0; i < centers.length; i++) {
+      final center = centers[i];
+      final name = center['name'] ?? 'Unknown';
+      final city = center['city'] ?? 'N/A';
+      final id = center['id']?.toString() ?? '';
+      final stock = stockTotals[id] ?? 0;
+
+      buffer.writeln('║  ${(i + 1).toString().padLeft(2)}. $name');
+      buffer.writeln('║      City: $city | Stock: $stock units');
+      buffer.writeln(
+          '╟───────────────────────────────────────────────────────────────');
+    }
+
+    buffer.writeln(
+        '╚═══════════════════════════════════════════════════════════════');
+    debugPrint(buffer.toString());
   }
 }

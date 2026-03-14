@@ -1,25 +1,26 @@
+import 'package:bloody/core/constants/app_constants.dart';
+import 'package:bloody/core/layout/main_layout.dart';
+import 'package:bloody/core/services/fcm_service.dart';
+import 'package:bloody/core/theme/app_colors.dart';
+import 'package:bloody/core/widgets/app_loading_indicator.dart';
+import 'package:bloody/core/theme/app_spacing.dart';
+import 'package:bloody/features/shared/auth/presentation/providers/auth_provider.dart';
+import 'package:bloody/features/shared/auth/presentation/widgets/donor_rules_dialog.dart';
+import 'package:bloody/features/shared/auth/presentation/widgets/password_field.dart';
+import 'package:bloody/features/shared/auth/presentation/widgets/user_type_selector.dart';
+import 'package:bloody/features/shared/auth/utils/auth_validators.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../../core/layout/main_layout.dart';
-import '../../../../../core/services/fcm_service.dart';
-import '../../../../../core/theme/app_spacing.dart';
-import '../../../../../references/button_patterns.dart';
-import '../../data/auth_service.dart';
-import '../../utils/auth_validators.dart';
-import '../widgets/auth_text_field.dart';
-import '../widgets/donor_rules_dialog.dart';
-import '../widgets/password_field.dart';
-import '../widgets/user_type_selector.dart';
-
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen>
+class _SignupScreenState extends ConsumerState<SignupScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
@@ -27,42 +28,39 @@ class _SignupScreenState extends State<SignupScreen>
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _scrollController = ScrollController();
 
   DateTime? _selectedDate;
   String? _selectedBloodType;
   String? _selectedCity;
   String _selectedType = 'receiver';
-  bool _isLoading = false;
 
-  late final AnimationController _animController;
-
-  static const _bloodTypes = [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
-  ];
-
-  static const _syrianCities = [
-    'Damascus', 'Aleppo', 'Homs', 'Hama', 'Latakia', 'Tartus', 'Idlib',
-    'Daraa', 'As-Suwayda', 'Quneitra', 'Deir ez-Zor', 'Al-Hasakah',
-    'Raqqa', 'Rif Dimashq',
-  ];
+  late final AnimationController _animationController;
+  late final Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
+    _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..forward();
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+    _animationController.forward();
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _animationController.dispose();
     _emailController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _phoneController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -100,42 +98,42 @@ class _SignupScreenState extends State<SignupScreen>
       return;
     }
 
-    setState(() => _isLoading = true);
-
-    final result = await AuthService.signUp(
-      email: _emailController.text,
-      password: _passwordController.text,
-      username: _usernameController.text,
-      phone: _phoneController.text,
-      userType: _selectedType,
-      bloodType: _selectedBloodType!,
-      city: _selectedCity!,
-      birthDate: _selectedDate!,
-    );
+    final result = await ref.read(authNotifierProvider.notifier).signUp(
+          email: _emailController.text,
+          password: _passwordController.text,
+          username: _usernameController.text,
+          phone: _phoneController.text,
+          userType: _selectedType,
+          bloodType: _selectedBloodType!,
+          city: _selectedCity!,
+          birthDate: _selectedDate!,
+        );
 
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (result.success) {
       if (_selectedType == 'receiver') {
         await FcmService.initialize();
         await FcmService.notifyDonorsInCity(
           city: _selectedCity!,
-          title: 'New Blood Request',
-          body: 'Someone in $_selectedCity needs $_selectedBloodType blood. Check now!',
+          bloodType: _selectedBloodType!,
         );
       }
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('account_created'.tr()),
           backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
+
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => MainLayout(userType: _selectedType),
-        ),
+        MaterialPageRoute(builder: (_) => MainLayout(userType: _selectedType)),
         (route) => false,
       );
     } else {
@@ -143,18 +141,13 @@ class _SignupScreenState extends State<SignupScreen>
     }
   }
 
-  void _showError(String msg) {
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(msg)),
-          ],
-        ),
+        content: Text(message),
         backgroundColor: Theme.of(context).colorScheme.error,
         behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
@@ -162,172 +155,365 @@ class _SignupScreenState extends State<SignupScreen>
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final iconColor = colors.onSurface.withValues(alpha: 0.5);
-    final hintColor = colors.onSurface.withValues(alpha: 0.4);
+    final colorScheme = Theme.of(context).colorScheme;
+    final authState = ref.watch(authNotifierProvider);
+    final isLoading = authState.isLoading;
 
     return Scaffold(
-      appBar: AppBar(title: Text('create_account'.tr())),
+      backgroundColor: colorScheme.surface,
+      appBar: AppBar(
+        title: Text('create_account'.tr()),
+        backgroundColor: colorScheme.surface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: AppSpacing.page,
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _staggered(
-                  0,
-                  child: UserTypeSelector(
-                    selectedType: _selectedType,
-                    onChanged: _onTypeChanged,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.lg),
-                _staggered(
-                  1,
-                  child: AuthTextField(
-                    controller: _emailController,
-                    label: 'email'.tr(),
-                    prefixIcon: Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress,
-                    validator: AuthValidators.email,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  2,
-                  child: AuthTextField(
-                    controller: _usernameController,
-                    label: 'username'.tr(),
-                    prefixIcon: Icons.person_outline,
-                    validator: AuthValidators.username,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  3,
-                  child: PasswordField(
-                    controller: _passwordController,
-                    label: 'password'.tr(),
-                    validator: AuthValidators.password,
-                    showStrengthIndicator: true,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  4,
-                  child: PasswordField(
-                    controller: _confirmPasswordController,
-                    label: 'confirm_password'.tr(),
-                    validator: (val) => AuthValidators.confirmPassword(
-                      val,
-                      _passwordController.text,
-                    ),
-                    textInputAction: TextInputAction.next,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  5,
-                  child: AuthTextField(
-                    controller: _phoneController,
-                    label: 'phone_number'.tr(),
-                    prefixIcon: Icons.phone,
-                    keyboardType: TextInputType.phone,
-                    validator: AuthValidators.phone,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  6,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedCity,
-                    dropdownColor: colors.surface,
-                    items: _syrianCities
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c.tr())))
-                        .toList(),
-                    onChanged: (val) => setState(() => _selectedCity = val),
-                    decoration: InputDecoration(
-                      labelText: 'city_label'.tr(),
-                      prefixIcon: Icon(Icons.location_city, color: iconColor),
-                    ),
-                    validator: (val) => val == null ? 'city_required'.tr() : null,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  7,
-                  child: InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: InputDecoration(
-                        labelText: 'date_of_birth'.tr(),
-                        prefixIcon: Icon(Icons.calendar_today, color: iconColor),
-                      ),
-                      child: Text(
-                        _selectedDate == null
-                            ? 'select_date'.tr()
-                            : _selectedDate!.toIso8601String().split('T')[0],
-                        style: TextStyle(
-                          color: _selectedDate == null
-                              ? hintColor
-                              : colors.onSurface,
-                        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: AppSpacing.page.copyWith(top: 16, bottom: 32),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          UserTypeSelector(
+                            selectedType: _selectedType,
+                            onChanged: isLoading ? (_) {} : _onTypeChanged,
+                          ),
+                          const SizedBox(height: 24),
+                          _InputField(
+                            controller: _emailController,
+                            label: 'email'.tr(),
+                            icon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: AuthValidators.email,
+                            enabled: !isLoading,
+                          ),
+                          const SizedBox(height: 12),
+                          _InputField(
+                            controller: _usernameController,
+                            label: 'username'.tr(),
+                            icon: Icons.person_outline,
+                            validator: AuthValidators.username,
+                            enabled: !isLoading,
+                          ),
+                          const SizedBox(height: 12),
+                          PasswordField(
+                            controller: _passwordController,
+                            label: 'password'.tr(),
+                            validator: AuthValidators.password,
+                            showStrengthIndicator: true,
+                          ),
+                          const SizedBox(height: 12),
+                          PasswordField(
+                            controller: _confirmPasswordController,
+                            label: 'confirm_password'.tr(),
+                            validator: (val) => AuthValidators.confirmPassword(
+                              val,
+                              _passwordController.text,
+                            ),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          _InputField(
+                            controller: _phoneController,
+                            label: 'phone_number'.tr(),
+                            icon: Icons.phone,
+                            keyboardType: TextInputType.phone,
+                            validator: AuthValidators.phone,
+                            enabled: !isLoading,
+                          ),
+                          const SizedBox(height: 12),
+                          _DropdownField(
+                            label: 'city_label'.tr(),
+                            icon: Icons.location_city,
+                            value: _selectedCity,
+                            items: AppCities.syrianCities,
+                            onChanged: isLoading
+                                ? null
+                                : (val) => setState(() => _selectedCity = val),
+                            validator: (val) =>
+                                val == null ? 'city_required'.tr() : null,
+                          ),
+                          const SizedBox(height: 12),
+                          _DatePickerField(
+                            label: 'date_of_birth'.tr(),
+                            selectedDate: _selectedDate,
+                            onTap: isLoading ? null : _pickDate,
+                          ),
+                          const SizedBox(height: 12),
+                          _DropdownField(
+                            label: 'blood_type'.tr(),
+                            icon: Icons.bloodtype,
+                            value: _selectedBloodType,
+                            items: AppCities.bloodTypes,
+                            translateItems: false,
+                            onChanged: isLoading
+                                ? null
+                                : (val) =>
+                                    setState(() => _selectedBloodType = val),
+                            validator: (val) =>
+                                val == null ? 'select_blood_error'.tr() : null,
+                          ),
+                          const SizedBox(height: 32),
+                          _PrimaryButton(
+                            label: 'sign_up_enter'.tr(),
+                            isLoading: isLoading,
+                            onPressed: isLoading ? null : _signUp,
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: AppSpacing.md),
-                _staggered(
-                  8,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedBloodType,
-                    dropdownColor: colors.surface,
-                    items: _bloodTypes
-                        .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                        .toList(),
-                    onChanged: (val) => setState(() => _selectedBloodType = val),
-                    decoration: InputDecoration(
-                      labelText: 'blood_type'.tr(),
-                      prefixIcon: Icon(Icons.bloodtype, color: iconColor),
-                    ),
-                    validator: (val) =>
-                        val == null ? 'select_blood_error'.tr() : null,
-                  ),
-                ),
-                SizedBox(height: AppSpacing.lg),
-                _staggered(
-                  9,
-                  child: AppButton(
-                    label: 'sign_up_enter'.tr(),
-                    isLoading: _isLoading,
-                    onPressed: _isLoading ? null : _signUp,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _InputField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final String? Function(String?)? validator;
+  final bool enabled;
+
+  const _InputField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.keyboardType,
+    this.validator,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return TextFormField(
+      controller: controller,
+      enabled: enabled,
+      keyboardType: keyboardType,
+      textInputAction: TextInputAction.next,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon:
+            Icon(icon, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.accent, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colorScheme.error, width: 1),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+    );
+  }
+}
+
+class _DropdownField extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final String? value;
+  final List<String> items;
+  final void Function(String?)? onChanged;
+  final String? Function(String?)? validator;
+  final bool translateItems;
+
+  const _DropdownField({
+    required this.label,
+    required this.icon,
+    this.value,
+    required this.items,
+    this.onChanged,
+    this.validator,
+    this.translateItems = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      items: items
+          .map((item) => DropdownMenuItem(
+              value: item, child: Text(translateItems ? item.tr() : item)))
+          .toList(),
+      onChanged: onChanged,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon:
+            Icon(icon, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.accent, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colorScheme.error, width: 1),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+    );
+  }
+}
+
+class _DatePickerField extends StatelessWidget {
+  final String label;
+  final DateTime? selectedDate;
+  final VoidCallback? onTap;
+
+  const _DatePickerField({
+    required this.label,
+    this.selectedDate,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(Icons.calendar_today,
+              color: colorScheme.onSurface.withValues(alpha: 0.5)),
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.accent, width: 2),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+        child: Text(
+          selectedDate == null
+              ? 'select_date'.tr()
+              : selectedDate!.toIso8601String().split('T')[0],
+          style: TextStyle(
+            color: selectedDate == null
+                ? colorScheme.onSurface.withValues(alpha: 0.4)
+                : colorScheme.onSurface,
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _staggered(int index, {required Widget child}) {
-    final begin = (index * 0.08).clamp(0.0, 0.6);
-    final end = (begin + 0.4).clamp(0.0, 1.0);
-    final curved = CurvedAnimation(
-      parent: _animController,
-      curve: Interval(begin, end, curve: Curves.easeOut),
-    );
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.15),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
+class _PrimaryButton extends StatefulWidget {
+  final String label;
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  const _PrimaryButton({
+    required this.label,
+    this.isLoading = false,
+    this.onPressed,
+  });
+
+  @override
+  State<_PrimaryButton> createState() => _PrimaryButtonState();
+}
+
+class _PrimaryButtonState extends State<_PrimaryButton> {
+  double _scale = 1.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: widget.onPressed == null
+          ? null
+          : (_) => setState(() => _scale = 0.97),
+      onTapUp: widget.onPressed == null
+          ? null
+          : (_) {
+              setState(() => _scale = 1.0);
+              widget.onPressed?.call();
+            },
+      onTapCancel:
+          widget.onPressed == null ? null : () => setState(() => _scale = 1.0),
+      child: AnimatedScale(
+        scale: _scale,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: Container(
+          height: 50,
+          decoration: BoxDecoration(
+            color: widget.onPressed == null
+                ? AppColors.accent.withValues(alpha: 0.5)
+                : AppColors.accent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: widget.isLoading
+                ? const AppLoadingIndicator(
+                    size: 20,
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  )
+                : Text(
+                    widget.label,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../../../core/theme/app_theme.dart';
+import '../../../../../../core/utils/map_marker_helper.dart';
 import '../../../../../../core/widgets/custom_loader.dart';
 import '../../../../../../core/widgets/user_card.dart';
 import '../../data/map_finder_service.dart';
@@ -21,12 +22,11 @@ class ReceiverHomeScreen extends StatefulWidget {
   State<ReceiverHomeScreen> createState() => _ReceiverHomeScreenState();
 }
 
-class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
-    with SingleTickerProviderStateMixin {
+class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
   final MapFinderService _service = MapFinderService();
 
   bool _isMapView = false;
-  List<Map<String, dynamic>> _donors = [];
+  final List<Map<String, dynamic>> _donors = [];
 
   bool _isInitialLoading = true;
   bool _isLoadingMore = false;
@@ -39,6 +39,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
   Position? _currentPosition;
   Set<Marker> _markers = {};
   GoogleMapController? _mapController;
+  BitmapDescriptor? _donorMarkerIcon;
 
   Timer? _autoRefreshTimer;
   String _statusMessage = '';
@@ -46,14 +47,17 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
   String? _neededBloodType;
   String? _myCity;
   String? _myUserId;
-  String? _myUsername;
-  bool _isBroadcasting = false;
 
-  // Pulse animation for broadcast FAB + empty state heart
-  late final AnimationController _pulseCtrl;
-  late final Animation<double> _pulseAnim;
-
-  final List<String> _allBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+  final List<String> _allBloodTypes = [
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-'
+  ];
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -61,13 +65,8 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
   void initState() {
     super.initState();
     _myUserId = Supabase.instance.client.auth.currentUser!.id;
-
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 1.0, end: 1.06)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
-
     _scrollController.addListener(_onScroll);
+    _loadMarkerIcon();
     _initData();
 
     _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
@@ -75,17 +74,26 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
     });
   }
 
+  Future<void> _loadMarkerIcon() async {
+    final icon = await MapMarkerHelper.getDonorMarker();
+    if (mounted) {
+      setState(() {
+        _donorMarkerIcon = icon;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
     _autoRefreshTimer?.cancel();
-    _pulseCtrl.dispose();
     super.dispose();
   }
 
   void _onScroll() {
     if (_isMapView) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _fetchDonors(loadMore: true);
     }
   }
@@ -96,7 +104,9 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
     await _determinePosition();
     await _fetchInitialProfile();
     Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && _isInitialLoading) setState(() => _isInitialLoading = false);
+      if (mounted && _isInitialLoading) {
+        setState(() => _isInitialLoading = false);
+      }
     });
   }
 
@@ -105,13 +115,17 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
     setState(() => _statusMessage = 'checking_location'.tr());
     try {
       var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
         setState(() => _statusMessage = 'location_denied'.tr());
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 5));
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 5));
       _updateLocation(pos);
     } catch (_) {
       try {
@@ -145,14 +159,12 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
         setState(() {
           _neededBloodType = bt;
           _myCity = profile['city'];
-          _myUsername = profile['username'] ??
-              Supabase.instance.client.auth.currentUser!.email?.split('@')[0] ??
-              'Someone';
         });
-        if (bt != null)
+        if (bt != null) {
           await _fetchDonors();
-        else
+        } else {
           setState(() => _isInitialLoading = false);
+        }
       } else {
         if (mounted) setState(() => _isInitialLoading = false);
       }
@@ -199,11 +211,12 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
         });
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isInitialLoading = false;
           _isLoadingMore = false;
         });
+      }
     }
   }
 
@@ -214,10 +227,11 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
       markers.add(Marker(
         markerId: MarkerId(d['id']),
         position: LatLng(d['latitude'], d['longitude']),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        icon: _donorMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         infoWindow: InfoWindow(
-          title: 'Donor: ${d['blood_type']}',
-          snippet: 'Tap to see details',
+          title: '${'donor'.tr()}: ${d['blood_type']}',
+          snippet: 'tap_to_see_details'.tr(),
           onTap: () => _showDonorModal(d),
         ),
       ));
@@ -235,13 +249,16 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
         title: Text('confirm_donation'.tr()),
         content: Text('confirm_donation_body'.tr(args: [donorName])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('cancel'.tr())),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('cancel'.tr())),
           ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12))),
               child: Text('yes_confirm'.tr())),
         ],
       ),
@@ -283,7 +300,8 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Row(
                 children: [
@@ -352,49 +370,6 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
     if (await canLaunchUrl(uri)) launchUrl(uri);
   }
 
-  void _showBroadcastSheet() {
-    if (_neededBloodType == null) {
-      _showSnack('please_select_blood_type'.tr(), Colors.orange);
-      return;
-    }
-    if (_myCity == null || _myCity!.isEmpty) {
-      _showSnack('broadcast_needs_city'.tr(), Colors.orange);
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _BroadcastSheet(
-        bloodType: _neededBloodType!,
-        city: _myCity!,
-        onConfirm: () async {
-          Navigator.pop(ctx);
-          await _executeBroadcast();
-        },
-      ),
-    );
-  }
-
-  Future<void> _executeBroadcast() async {
-    setState(() => _isBroadcasting = true);
-    final count = await _service.sendBroadcastNotification(
-      receiverId: _myUserId!,
-      receiverBloodType: _neededBloodType!,
-      receiverCity: _myCity!,
-      receiverName: _myUsername ?? 'Someone',
-    );
-    if (!mounted) return;
-    setState(() => _isBroadcasting = false);
-
-    if (count == -1)
-      _showSnack('broadcast_error'.tr(), Colors.red);
-    else if (count == 0)
-      _showSnack('broadcast_no_donors'.tr(), Colors.orange);
-    else
-      _showSnack('broadcast_sent'.tr(args: [count.toString()]), const Color(0xFF2E7D32));
-  }
-
   void _showSnack(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -404,8 +379,6 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
       margin: const EdgeInsets.all(16),
     ));
   }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -453,8 +426,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
           ),
           if (_donors.isNotEmpty)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(20),
@@ -541,53 +513,19 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
   }
 
   Widget _buildFABGroup(bool isDark) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // Broadcast (primary)
-        ScaleTransition(
-          scale: _pulseAnim,
-          child: FloatingActionButton.extended(
-            heroTag: 'broadcast_fab',
-            onPressed: _isBroadcasting ? null : _showBroadcastSheet,
-            backgroundColor: _isBroadcasting
-                ? AppTheme.primaryRed.withOpacity(0.7)
-                : AppTheme.primaryRed,
-            foregroundColor: Colors.white,
-            elevation: 6,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            icon: _isBroadcasting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.5, color: Colors.white))
-                : const Icon(Icons.campaign_rounded, size: 22),
-            label: Text(
-              _isBroadcasting ? 'broadcasting'.tr() : 'broadcast_request'.tr(),
-              style:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Toggle map/list
-        FloatingActionButton(
-          heroTag: 'receiver_map_fab',
-          onPressed: () => setState(() => _isMapView = !_isMapView),
-          backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
-          foregroundColor: AppTheme.primaryRed,
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-                color: AppTheme.primaryRed.withOpacity(0.35), width: 1.5),
-          ),
-          child: Icon(_isMapView ? Icons.list_rounded : Icons.map_rounded,
-              size: 22),
-        ),
-      ],
+    return FloatingActionButton(
+      heroTag: 'receiver_map_fab',
+      onPressed: () => setState(() => _isMapView = !_isMapView),
+      backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
+      foregroundColor: AppTheme.primaryRed,
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+            color: AppTheme.primaryRed.withOpacity(0.35), width: 1.5),
+      ),
+      child:
+          Icon(_isMapView ? Icons.list_rounded : Icons.map_rounded, size: 22),
     );
   }
 
@@ -612,8 +550,7 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
                     child: CustomLoader(size: 28));
               }
               return _StaggeredItem(
-                delay:
-                    Duration(milliseconds: (i * 60).clamp(0, 600)),
+                delay: Duration(milliseconds: (i * 60).clamp(0, 600)),
                 child: GestureDetector(
                   onTap: () => _showDonorModal(_donors[i]),
                   child: AbsorbPointer(
@@ -643,23 +580,20 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ScaleTransition(
-                      scale: _pulseAnim,
-                      child: Container(
-                        width: 110,
-                        height: 110,
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            colors: [
-                              AppTheme.primaryRed.withOpacity(0.15),
-                              AppTheme.primaryRed.withOpacity(0.04),
-                            ],
-                          ),
-                          shape: BoxShape.circle,
+                    Container(
+                      width: 110,
+                      height: 110,
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          colors: [
+                            AppTheme.primaryRed.withOpacity(0.15),
+                            AppTheme.primaryRed.withOpacity(0.04),
+                          ],
                         ),
-                        child: const Icon(Icons.favorite_rounded,
-                            size: 52, color: AppTheme.primaryRed),
+                        shape: BoxShape.circle,
                       ),
+                      child: const Icon(Icons.favorite_rounded,
+                          size: 52, color: AppTheme.primaryRed),
                     ),
                     const SizedBox(height: 24),
                     Text(
@@ -673,32 +607,12 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen>
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'try_broadcast_hint'.tr(),
+                      'check_back_later'.tr(),
                       style: TextStyle(
                           fontSize: 14,
                           height: 1.5,
                           color: isDark ? Colors.grey[500] : Colors.grey[500]),
                       textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: _showBroadcastSheet,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryRed,
-                        foregroundColor: Colors.white,
-                        elevation: 4,
-                        shadowColor: AppTheme.primaryRed.withOpacity(0.4),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 28, vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                      ),
-                      icon: const Icon(Icons.campaign_rounded, size: 20),
-                      label: Text(
-                        'broadcast_request'.tr(),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
                     ),
                   ],
                 ),
@@ -873,171 +787,6 @@ class _StaggeredItemState extends State<_StaggeredItem> {
         curve: Curves.easeOut,
         child: widget.child,
       ),
-    );
-  }
-}
-
-// ── Broadcast Sheet ───────────────────────────────────────────────────────────
-
-class _BroadcastSheet extends StatelessWidget {
-  final String bloodType;
-  final String city;
-  final VoidCallback onConfirm;
-
-  const _BroadcastSheet({
-    required this.bloodType,
-    required this.city,
-    required this.onConfirm,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppTheme.darkCard : Colors.white;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.18),
-                blurRadius: 24,
-                offset: const Offset(0, -4))
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 24),
-                decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.35),
-                    borderRadius: BorderRadius.circular(2))),
-
-            Container(
-              width: 76,
-              height: 76,
-              decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [
-                    AppTheme.primaryRed.withOpacity(0.15),
-                    AppTheme.primaryRed.withOpacity(0.06)
-                  ], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: AppTheme.primaryRed.withOpacity(0.2), width: 1.5)),
-              child: const Icon(Icons.campaign_rounded,
-                  color: AppTheme.primaryRed, size: 36),
-            ),
-            const SizedBox(height: 20),
-
-            Text(
-              'broadcast_title'.tr(),
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                  height: 1.3),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'broadcast_subtitle'.tr(),
-              style: TextStyle(
-                  fontSize: 14,
-                  height: 1.6,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _Chip(
-                    icon: Icons.bloodtype_rounded,
-                    label: bloodType,
-                    color: AppTheme.primaryRed),
-                const SizedBox(width: 10),
-                _Chip(
-                    icon: Icons.location_city_rounded,
-                    label: city,
-                    color: Colors.blue.shade700),
-              ],
-            ),
-            const SizedBox(height: 28),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: onConfirm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryRed,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shadowColor: AppTheme.primaryRed.withOpacity(0.4),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                icon: const Icon(Icons.send_rounded, size: 20),
-                label: Text('send_broadcast'.tr(),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: TextButton.styleFrom(
-                  foregroundColor:
-                      isDark ? Colors.grey[400] : Colors.grey[600],
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                child: Text('cancel'.tr(),
-                    style: const TextStyle(fontSize: 15)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _Chip({required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: color, size: 15),
-        const SizedBox(width: 6),
-        Text(label,
-            style: TextStyle(
-                color: color, fontWeight: FontWeight.bold, fontSize: 13)),
-      ]),
     );
   }
 }

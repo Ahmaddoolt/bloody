@@ -2,59 +2,35 @@ import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../../core/theme/app_colors.dart';
-import '../../../../../core/widgets/custom_loader.dart';
-import '../../data/donor_dashboard_service.dart';
+import '../../../../../core/utils/map_marker_helper.dart';
+import '../../../../../core/widgets/app_loading_indicator.dart';
+import '../../../../../core/widgets/map_toggle_fab.dart';
+import '../providers/deferral_timer_provider.dart';
+import '../providers/donor_dashboard_provider.dart';
+import '../providers/donor_profile_provider.dart';
+import '../providers/receiver_list_provider.dart';
 import '../widgets/deferral_view.dart';
-import '../widgets/donor_header.dart';
 import '../widgets/receiver_list.dart';
 
-class DonorHomeScreen extends StatefulWidget {
+class DonorHomeScreen extends ConsumerStatefulWidget {
   const DonorHomeScreen({super.key});
 
   @override
-  State<DonorHomeScreen> createState() => _DonorHomeScreenState();
+  ConsumerState<DonorHomeScreen> createState() => _DonorHomeScreenState();
 }
 
-class _DonorHomeScreenState extends State<DonorHomeScreen>
+class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
     with SingleTickerProviderStateMixin {
-  final _service = DonorDashboardService();
   final _scrollController = ScrollController();
-
-  bool _isMapView = false;
-  List<Map<String, dynamic>> _feedItems = [];
-
-  bool _isInitialLoading = true;
-  bool _isLoadingMore = false;
-  bool _hasMore = true;
-  bool _hasError = false;
-
-  final int _limit = 50;
-  int _offset = 0;
-  Position? _currentPosition;
-  Set<Marker> _markers = {};
-
-  String? _myBloodType;
-  String? _myCity;
-  int _myPoints = 0;
-  String _statusMessage = '';
-
-  bool _isDeferred = false;
-  DateTime? _lastDonationDate;
-  DateTime? _nextEligibleDate;
-  Timer? _countdownTimer;
-  Timer? _autoRefreshTimer;
-  String _remainingTime = '';
-
   late final AnimationController _ringCtrl;
   late final Animation<double> _ringAnim;
-
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  AutoRefreshController? _autoRefreshController;
+  BitmapDescriptor? _receiverMarkerIcon;
 
   @override
   void initState() {
@@ -63,199 +39,126 @@ class _DonorHomeScreenState extends State<DonorHomeScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+
     _ringAnim = Tween<double>(begin: 0.6, end: 1.0).animate(
       CurvedAnimation(parent: _ringCtrl, curve: Curves.easeInOut),
     );
 
     _scrollController.addListener(_onScroll);
-    _initData();
+    _loadMarkerIcon();
 
-    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
-      if (!_isDeferred && !_hasError && mounted) _fetchData(loadMore: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoRefreshController = ref.read(autoRefreshProvider);
+      _initData();
     });
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _countdownTimer?.cancel();
-    _autoRefreshTimer?.cancel();
     _ringCtrl.dispose();
+    _autoRefreshController?.stop();
     super.dispose();
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  String _formatDuration(Duration d) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return '${d.inDays}d  ${pad(d.inHours.remainder(24))}h'
-        '  ${pad(d.inMinutes.remainder(60))}m'
-        '  ${pad(d.inSeconds.remainder(60))}s';
-  }
-
-  void _startCountdownTimer() {
-    _countdownTimer?.cancel();
-    if (_nextEligibleDate == null) return;
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      final remaining = _nextEligibleDate!.difference(DateTime.now());
-      if (remaining.isNegative) {
-        t.cancel();
-        if (mounted) {
-          setState(() {
-            _isDeferred = false;
-            _remainingTime = '';
-          });
-          _fetchData();
-        }
-      } else {
-        if (mounted) setState(() => _remainingTime = _formatDuration(remaining));
-      }
-    });
-  }
-
-  double _calculateDeferralProgress() {
-    if (_lastDonationDate == null || _nextEligibleDate == null) return 0;
-    final total = _nextEligibleDate!.difference(_lastDonationDate!).inSeconds;
-    final elapsed = DateTime.now().difference(_lastDonationDate!).inSeconds;
-    return total <= 0 ? 1.0 : (elapsed / total).clamp(0.0, 1.0);
+  Future<void> _loadMarkerIcon() async {
+    final icon = await MapMarkerHelper.getReceiverMarker();
+    if (mounted) {
+      setState(() {
+        _receiverMarkerIcon = icon;
+      });
+    }
   }
 
   void _onScroll() {
-    if (_isMapView || _isDeferred || _hasError) return;
+    final isMapView = ref.read(isMapViewProvider);
+    final deferralState = ref.read(deferralTimerProvider);
+    final receiverState = ref.read(receiverListProvider);
+
+    if (isMapView || deferralState.isDeferred || receiverState.hasError) return;
+
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      _fetchData(loadMore: true);
+      _loadMore();
     }
   }
-
-  // ── Data ──────────────────────────────────────────────────────────────────
 
   Future<void> _initData() async {
-    await _determinePosition();
-    await _fetchData();
+    if (!mounted) return;
+    await ref.read(donorLocationNotifierProvider.notifier).determinePosition();
+    if (!mounted) return;
+    await _loadProfileAndReceivers();
+    if (!mounted) return;
+    _autoRefreshController?.start();
   }
 
-  Future<void> _determinePosition() async {
-    setState(() => _statusMessage = 'checking_location'.tr());
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        if (mounted) setState(() => _statusMessage = 'location_denied'.tr());
+  Future<void> _loadProfileAndReceivers() async {
+    if (!mounted) return;
+
+    // Use refresh to get the new value immediately
+    final profile = await ref.refresh(donorProfileProvider.future);
+
+    if (!mounted) return;
+
+    if (profile != null) {
+      _handleProfileData(profile);
+    }
+  }
+
+  void _handleProfileData(Map<String, dynamic> profile) {
+    final lastDonationDate = profile['last_donation_date'] != null
+        ? DateTime.parse(profile['last_donation_date'])
+        : null;
+
+    if (lastDonationDate != null) {
+      final nextEligibleDate = lastDonationDate.add(const Duration(days: 90));
+
+      if (nextEligibleDate.isAfter(DateTime.now())) {
+        ref
+            .read(deferralTimerProvider.notifier)
+            .startDeferralPeriod(lastDonationDate);
         return;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 5),
-      );
-      if (mounted) {
-        setState(() {
-          _currentPosition = pos;
-          _statusMessage = '';
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _statusMessage = 'gps_unavailable'.tr());
+    }
+
+    ref.read(deferralTimerProvider.notifier).clearDeferral();
+    _loadReceivers(profile);
+  }
+
+  void _loadReceivers(Map<String, dynamic> profile) {
+    final location = ref.read(donorLocationProvider);
+    final bloodType = profile['blood_type'] as String?;
+
+    if (bloodType != null) {
+      ref.read(receiverListProvider.notifier).fetchReceivers(
+            donorBloodType: bloodType,
+            donorCity: profile['city'] as String?,
+            donorLat: location.latitude,
+            donorLng: location.longitude,
+          );
     }
   }
 
-  Future<void> _fetchData({bool loadMore = false}) async {
-    if (loadMore && (_isLoadingMore || !_hasMore)) return;
+  void _loadMore() {
+    final profileAsync = ref.read(donorProfileProvider);
+    final location = ref.read(donorLocationProvider);
 
-    setState(() {
-      _hasError = false;
-      if (loadMore) {
-        _isLoadingMore = true;
-      } else {
-        if (_feedItems.isEmpty) _isInitialLoading = true;
-        _offset = 0;
-        _hasMore = true;
-        _feedItems.clear();
-      }
-    });
-
-    try {
-      final userId = Supabase.instance.client.auth.currentUser!.id;
-      final myProfile = await _service.getDonorProfile(userId);
-      if (myProfile == null) throw Exception('Profile not found');
-
-      _myBloodType = (myProfile['blood_type'] as String?)?.trim();
-      _myPoints = myProfile['points'] ?? 0;
-      _myCity = myProfile['city'];
-
-      if (myProfile['last_donation_date'] != null) {
-        _lastDonationDate = DateTime.parse(myProfile['last_donation_date']);
-        _nextEligibleDate = _lastDonationDate!.add(const Duration(days: 90));
-        if (_nextEligibleDate!.isAfter(DateTime.now())) {
-          if (mounted) {
-            setState(() {
-              _isDeferred = true;
-              _isInitialLoading = false;
-            });
-            _startCountdownTimer();
+    profileAsync.whenOrNull(
+      data: (profile) {
+        if (profile != null) {
+          final bloodType = profile['blood_type'] as String?;
+          if (bloodType != null) {
+            ref.read(receiverListProvider.notifier).fetchReceivers(
+                  donorBloodType: bloodType,
+                  donorCity: profile['city'] as String?,
+                  donorLat: location.latitude,
+                  donorLng: location.longitude,
+                  loadMore: true,
+                );
           }
-          return;
         }
-      }
-
-      setState(() => _isDeferred = false);
-      _countdownTimer?.cancel();
-
-      if (_myBloodType != null) {
-        final receivers = await _service.getCompatibleReceivers(
-          donorBloodType: _myBloodType!,
-          offset: _offset,
-          limit: _limit,
-          donorCity: _myCity,
-          donorLat: _currentPosition?.latitude,
-          donorLng: _currentPosition?.longitude,
-        );
-        if (mounted) {
-          if (receivers.length < _limit) _hasMore = false;
-          setState(() {
-            _feedItems.addAll(receivers);
-            _offset += _limit;
-            _isLoadingMore = false;
-            _isInitialLoading = false;
-            _buildMarkers();
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isInitialLoading = false);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _isLoadingMore = false;
-          _isInitialLoading = false;
-        });
-      }
-    }
-  }
-
-  void _buildMarkers() {
-    final markers = <Marker>{};
-    for (final item in _feedItems) {
-      if (item['latitude'] == null || item['longitude'] == null) continue;
-      markers.add(Marker(
-        markerId: MarkerId('receiver_${item['id']}'),
-        position: LatLng(
-          (item['latitude'] as num).toDouble(),
-          (item['longitude'] as num).toDouble(),
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-        infoWindow: InfoWindow(
-          title: 'Needs ${item['blood_type']}',
-          snippet: 'tap_to_call'.tr(),
-          onTap: () => _makeCall(item['phone']),
-        ),
-      ));
-    }
-    setState(() => _markers = markers);
+      },
+    );
   }
 
   void _makeCall(String? phone) async {
@@ -264,65 +167,280 @@ class _DonorHomeScreenState extends State<DonorHomeScreen>
     if (await canLaunchUrl(uri)) launchUrl(uri);
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _buildBody(),
-      floatingActionButton:
-          (_isDeferred || _isInitialLoading || _hasError) ? null : _buildFAB(),
-    );
-  }
+    final deferralState = ref.watch(deferralTimerProvider);
+    final receiverState = ref.watch(receiverListProvider);
+    final isMapView = ref.watch(isMapViewProvider);
+    final profileAsync = ref.watch(donorProfileProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
-  Widget _buildBody() {
-    if (_isInitialLoading) return const CustomLoader();
-    if (_hasError) return DonorErrorState(onRetry: () => _fetchData());
-
-    if (_isDeferred) {
+    // Show deferral view (no AppBar, full screen)
+    if (deferralState.isDeferred) {
       return DeferralView(
-        progress: _calculateDeferralProgress(),
-        remainingTime: _remainingTime,
+        progress: deferralState.progress,
+        remainingTime: deferralState.remainingTime,
         ringAnimation: _ringAnim,
       );
     }
 
-    return Column(
-      children: [
-        DonorHeader(
-          bloodType: _myBloodType,
-          points: _myPoints,
-          receiverCount: _feedItems.length,
-          city: _myCity,
-        ),
-        Expanded(
-          child: _isMapView
-              ? _buildMap()
+    // Show loading
+    if (receiverState.isLoading && receiverState.items.isEmpty) {
+      return const Scaffold(
+        body: AppLoadingCenter(),
+      );
+    }
+
+    // Show error
+    if (receiverState.hasError) {
+      return Scaffold(
+        body: _buildErrorState(),
+      );
+    }
+
+    // Show main dashboard with AppBar
+    return profileAsync.when(
+      loading: () => const Scaffold(
+        body: AppLoadingCenter(),
+      ),
+      error: (_, __) => Scaffold(
+        body: _buildErrorState(),
+      ),
+      data: (profile) {
+        if (profile == null) {
+          return Scaffold(
+            body: _buildErrorState(),
+          );
+        }
+
+        final bloodType = profile['blood_type'] as String?;
+        final points = profile['points'] ?? 0;
+        final city = profile['city'] as String?;
+
+        return Scaffold(
+          appBar: _buildAppBar(
+              bloodType, points, receiverState.totalCount, city, colorScheme),
+          body: ref.watch(isMapViewProvider)
+              ? _buildMap(receiverState.items)
               : ReceiverList(
-                  items: _feedItems,
-                  bloodType: _myBloodType,
-                  hasMore: _hasMore,
+                  items: receiverState.items,
+                  bloodType: bloodType,
+                  hasMore: receiverState.hasMore,
                   scrollController: _scrollController,
-                  onRefresh: () => _fetchData(loadMore: false),
+                  onRefresh: _loadProfileAndReceivers,
                   onCall: _makeCall,
                 ),
-        ),
-      ],
+          floatingActionButton: MapToggleFab(
+            isMapView: ref.watch(isMapViewProvider),
+            onToggle: () => ref.read(isMapViewProvider.notifier).state =
+                !ref.read(isMapViewProvider),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildMap() {
-    if (_currentPosition == null) {
+  PreferredSizeWidget _buildAppBar(String? bloodType, int points,
+      int receiverCount, String? city, ColorScheme colorScheme) {
+    return AppBar(
+      backgroundColor: AppColors.accent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: 120,
+      flexibleSpace: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.accentDark, AppColors.accent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Blood Type Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.bloodtype_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            bloodType ?? '--',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Points Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.stars_rounded,
+                            color: Colors.amber,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$points',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'ready_to_save'.tr(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.people_alt_rounded,
+                      color: Colors.white.withOpacity(0.8),
+                      size: 12,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$receiverCount ${'receivers'.tr()}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (city != null) ...[
+                      const SizedBox(width: 10),
+                      Icon(
+                        Icons.location_on_rounded,
+                        color: Colors.white.withOpacity(0.8),
+                        size: 12,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        city.tr(),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.error_outline,
+              size: 40,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'error_loading_data'.tr(),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'check_connection'.tr(),
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: _loadProfileAndReceivers,
+            icon: const Icon(Icons.refresh),
+            label: Text('retry'.tr()),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMap(List<Map<String, dynamic>> items) {
+    final location = ref.watch(donorLocationProvider);
+
+    if (location.latitude == null || location.longitude == null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CustomLoader(),
+            const AppLoadingCenter(size: 40),
             const SizedBox(height: 20),
             Text(
-              _statusMessage,
+              location.status?.isNotEmpty == true ? location.status!.tr() : '',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
               ),
             ),
           ],
@@ -330,38 +448,40 @@ class _DonorHomeScreenState extends State<DonorHomeScreen>
       );
     }
 
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: LatLng(
-          _currentPosition!.latitude,
-          _currentPosition!.longitude,
+    final markers = _buildMarkers(items);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: GoogleMap(
+        initialCameraPosition: CameraPosition(
+          target: LatLng(location.latitude!, location.longitude!),
+          zoom: 12,
         ),
-        zoom: 12,
+        myLocationEnabled: true,
+        markers: markers,
       ),
-      myLocationEnabled: true,
-      markers: _markers,
     );
   }
 
-  Widget _buildFAB() {
-    final isMap = _isMapView;
-
-    return FloatingActionButton(
-      heroTag: 'donor_map_fab',
-      onPressed: () => setState(() => _isMapView = !_isMapView),
-      backgroundColor: isMap ? Colors.white : AppColors.accent,
-      foregroundColor: isMap ? AppColors.accent : Colors.white,
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: isMap
-            ? BorderSide(
-                color: AppColors.accent.withValues(alpha: 0.4),
-                width: 1.5,
-              )
-            : BorderSide.none,
-      ),
-      child: Icon(isMap ? Icons.list_rounded : Icons.map_rounded, size: 24),
-    );
+  Set<Marker> _buildMarkers(List<Map<String, dynamic>> items) {
+    final markers = <Marker>{};
+    for (final item in items) {
+      if (item['latitude'] == null || item['longitude'] == null) continue;
+      markers.add(Marker(
+        markerId: MarkerId('receiver_${item['id']}'),
+        position: LatLng(
+          (item['latitude'] as num).toDouble(),
+          (item['longitude'] as num).toDouble(),
+        ),
+        icon: _receiverMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+        infoWindow: InfoWindow(
+          title: '${'needs'.tr()} ${item['blood_type']}',
+          snippet: 'tap_to_call'.tr(),
+          onTap: () => _makeCall(item['phone']),
+        ),
+      ));
+    }
+    return markers;
   }
 }

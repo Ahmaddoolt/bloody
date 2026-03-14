@@ -1,4 +1,6 @@
 // file: lib/shared/features/settings/presentation/widgets/priority_request_card.dart
+import 'package:bloody/core/widgets/app_loading_indicator.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_theme.dart';
@@ -25,25 +27,24 @@ class PriorityRequestCard extends StatelessWidget {
 
     Color cardColor = Colors.blue;
     IconData cardIcon = Icons.priority_high_rounded;
-    String cardTitle = 'Request High Priority';
-    String cardSubtitle =
-        'If you urgently need blood, request high-priority status for faster assistance.';
+    String cardTitle = 'request_high_priority'.tr();
+    String cardSubtitle = 'request_high_priority_desc'.tr();
 
     if (isApproved) {
       cardColor = AppTheme.primaryRed;
       cardIcon = Icons.star_rounded;
-      cardTitle = 'High Priority Approved ⭐';
-      cardSubtitle = 'You have been granted high priority status by an admin.';
+      cardTitle = 'high_priority_approved'.tr();
+      cardSubtitle = 'high_priority_approved_desc'.tr();
     } else if (isPending) {
       cardColor = Colors.orange;
       cardIcon = Icons.hourglass_top_rounded;
-      cardTitle = 'Request Pending Review';
-      cardSubtitle = 'Your priority request is awaiting admin approval.';
+      cardTitle = 'request_pending_review'.tr();
+      cardSubtitle = 'request_pending_desc'.tr();
     } else if (isRejected) {
       cardColor = Colors.grey;
       cardIcon = Icons.cancel_outlined;
-      cardTitle = 'Request Rejected';
-      cardSubtitle = 'Your previous request was rejected. You may submit a new one.';
+      cardTitle = 'request_rejected'.tr();
+      cardSubtitle = 'request_rejected_desc'.tr();
     }
 
     return Container(
@@ -74,13 +75,17 @@ class PriorityRequestCard extends StatelessWidget {
                   children: [
                     Text(
                       cardTitle,
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: cardColor),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: cardColor),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       cardSubtitle,
                       style: TextStyle(
-                          fontSize: 12, color: isDark ? Colors.grey[400] : Colors.grey[700]),
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey[700]),
                     ),
                   ],
                 ),
@@ -94,18 +99,22 @@ class PriorityRequestCard extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: isRequesting ? null : onRequest,
                 icon: isRequesting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const AppLoadingIndicator(
+                        size: 16,
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      )
                     : const Icon(Icons.send_rounded, size: 18),
-                label: Text(isRequesting ? 'Submitting...' : 'Request High Priority'),
+                label: Text(isRequesting
+                    ? 'submitting'.tr()
+                    : 'request_high_priority'.tr()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: cardColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),

@@ -1,3 +1,4 @@
+import 'package:bloody/core/theme/app_colors.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
@@ -30,9 +31,8 @@ class _PasswordFieldState extends State<PasswordField> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final iconColor = colors.onSurface.withValues(alpha: 0.5);
-    final dividerColor = colors.outline;
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = colorScheme.onSurface.withValues(alpha: 0.5);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -45,7 +45,8 @@ class _PasswordFieldState extends State<PasswordField> {
           textInputAction: widget.textInputAction,
           autovalidateMode: AutovalidateMode.onUserInteraction,
           onChanged: widget.showStrengthIndicator
-              ? (val) => setState(() => _strength = AuthValidators.passwordStrength(val))
+              ? (val) => setState(
+                  () => _strength = AuthValidators.passwordStrength(val))
               : null,
           decoration: InputDecoration(
             labelText: widget.label,
@@ -57,20 +58,41 @@ class _PasswordFieldState extends State<PasswordField> {
               ),
               onPressed: () => setState(() => _obscureText = !_obscureText),
             ),
+            filled: true,
+            fillColor:
+                colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.accent, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: colorScheme.error, width: 1),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
         ),
         if (widget.showStrengthIndicator) ...[
-          SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.xs),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: _strength,
               minHeight: 4,
-              backgroundColor: dividerColor,
+              backgroundColor: colorScheme.outline,
               valueColor: AlwaysStoppedAnimation<Color>(_strengthColor),
             ),
           ),
-          SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             _strengthLabel,
             style: TextStyle(fontSize: 12, color: _strengthColor),

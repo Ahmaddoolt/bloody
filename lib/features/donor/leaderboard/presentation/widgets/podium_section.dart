@@ -1,11 +1,10 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../../core/theme/app_colors.dart';
-import '../../../../../core/theme/app_spacing.dart';
 import '../../../../../core/theme/app_theme.dart';
-import '../../../../../core/theme/app_typography.dart';
 
+/// Enhanced podium section with clean minimalist design
+/// Shows top 3 donors in a beautiful podium layout
 class PodiumSection extends StatelessWidget {
   final List<Map<String, dynamic>> leaders;
   final void Function(Map<String, dynamic> donor, int rank) onTap;
@@ -20,30 +19,26 @@ class PodiumSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (leaders.isEmpty) return const SizedBox.shrink();
 
-    final colors = Theme.of(context).colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final top1 = leaders[0];
     final top2 = leaders.length > 1 ? leaders[1] : null;
     final top3 = leaders.length > 2 ? leaders[2] : null;
 
     return SliverToBoxAdapter(
       child: Container(
-        margin: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outline.withOpacity(0.1),
+          ),
         ),
         child: Column(
           children: [
-            _SectionLabel(colors: colors),
-            SizedBox(height: AppSpacing.lg),
+            _SectionLabel(colorScheme: colorScheme),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -59,11 +54,11 @@ class PodiumSection extends StatelessWidget {
                   ),
                 Expanded(
                   child: Transform.translate(
-                    offset: const Offset(0, -20),
+                    offset: const Offset(0, -12),
                     child: _PodiumCard(
                       donor: top1,
                       rank: 1,
-                      rankColor: const Color(0xFFFFD700),
+                      rankColor: AppTheme.gold,
                       onTap: () => onTap(top1, 1),
                       isWinner: true,
                     ),
@@ -88,8 +83,8 @@ class PodiumSection extends StatelessWidget {
 }
 
 class _SectionLabel extends StatelessWidget {
-  final ColorScheme colors;
-  const _SectionLabel({required this.colors});
+  final ColorScheme colorScheme;
+  const _SectionLabel({required this.colorScheme});
 
   @override
   Widget build(BuildContext context) {
@@ -97,28 +92,29 @@ class _SectionLabel extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          width: 28,
+          width: 24,
           height: 2,
           decoration: BoxDecoration(
-            color: AppTheme.gold.withValues(alpha: 0.5),
+            color: AppTheme.gold.withOpacity(0.5),
             borderRadius: BorderRadius.circular(1),
           ),
         ),
-        SizedBox(width: AppSpacing.sm),
+        const SizedBox(width: 8),
         Text(
           'top_donors'.tr(),
-          style: AppTypography.label.copyWith(
+          style: TextStyle(
             fontSize: 12,
-            letterSpacing: 1.5,
-            color: colors.onSurface.withValues(alpha: 0.5),
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: colorScheme.onSurface.withOpacity(0.5),
           ),
         ),
-        SizedBox(width: AppSpacing.sm),
+        const SizedBox(width: 8),
         Container(
-          width: 28,
+          width: 24,
           height: 2,
           decoration: BoxDecoration(
-            color: AppTheme.gold.withValues(alpha: 0.5),
+            color: AppTheme.gold.withOpacity(0.5),
             borderRadius: BorderRadius.circular(1),
           ),
         ),
@@ -144,8 +140,11 @@ class _PodiumCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final name = ((donor['email'] ?? 'unknown') as String).split('@')[0];
+    final colorScheme = Theme.of(context).colorScheme;
+    final rawName = donor['username'] ?? donor['email'];
+    final name = (rawName != null && !rawName.toString().toLowerCase().contains('unknown'))
+        ? (rawName as String).split('@')[0]
+        : 'donor'.tr();
     final bloodType = donor['blood_type'] ?? '?';
     final points = (donor['points'] as num? ?? 0).toInt();
 
@@ -154,27 +153,35 @@ class _PodiumCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Crown for winner
           if (isWinner)
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Icon(Icons.workspace_premium_rounded, color: rankColor, size: 26),
-            ),
-          // Avatar
-          Container(
-            width: isWinner ? 66 : 52,
-            height: isWinner ? 66 : 52,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: rankColor.withValues(alpha: 0.15),
-              border: Border.all(
-                color: rankColor.withValues(alpha: 0.6),
-                width: isWinner ? 2.5 : 2,
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Icon(
+                Icons.workspace_premium_rounded,
+                color: rankColor,
+                size: 22,
               ),
+            ),
+          // Avatar with blood type
+          Container(
+            width: isWinner ? 60 : 48,
+            height: isWinner ? 60 : 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  rankColor,
+                  rankColor.withOpacity(0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: rankColor.withValues(alpha: 0.3),
-                  blurRadius: isWinner ? 14 : 8,
-                  offset: const Offset(0, 4),
+                  color: rankColor.withOpacity(0.3),
+                  blurRadius: isWinner ? 12 : 8,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
@@ -182,52 +189,66 @@ class _PodiumCard extends StatelessWidget {
               child: Text(
                 bloodType,
                 style: TextStyle(
-                  color: rankColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: isWinner ? 20 : 16,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: isWinner ? 18 : 14,
                 ),
               ),
             ),
           ),
-          SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 8),
+          // Name
           Text(
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: colors.onSurface,
-              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
               fontSize: isWinner ? 13 : 11,
             ),
           ),
-          SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: 4),
+          // Points badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: rankColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: rankColor.withValues(alpha: 0.35)),
+              color: rankColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: rankColor.withOpacity(0.3)),
             ),
             child: Text(
-              '$points pts',
+              '$points',
               style: TextStyle(
                 color: rankColor,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w700,
                 fontSize: 11,
               ),
             ),
           ),
-          SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 8),
           // Podium step
           Container(
-            height: rank == 1 ? 48 : rank == 2 ? 36 : 24,
+            height: rank == 1
+                ? 40
+                : rank == 2
+                    ? 28
+                    : 20,
             decoration: BoxDecoration(
-              color: rankColor.withValues(alpha: 0.12),
+              gradient: LinearGradient(
+                colors: [
+                  rankColor.withOpacity(0.15),
+                  rankColor.withOpacity(0.05),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
               border: Border(
-                top: BorderSide(color: rankColor.withValues(alpha: 0.4)),
-                left: BorderSide(color: rankColor.withValues(alpha: 0.4)),
-                right: BorderSide(color: rankColor.withValues(alpha: 0.4)),
+                top: BorderSide(color: rankColor.withOpacity(0.4)),
+                left: BorderSide(color: rankColor.withOpacity(0.4)),
+                right: BorderSide(color: rankColor.withOpacity(0.4)),
               ),
             ),
             child: Center(
@@ -235,7 +256,7 @@ class _PodiumCard extends StatelessWidget {
                 '#$rank',
                 style: TextStyle(
                   color: rankColor,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                   fontSize: 12,
                 ),
               ),
