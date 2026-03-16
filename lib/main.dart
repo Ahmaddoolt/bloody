@@ -51,7 +51,7 @@ class BloodyApp extends StatelessWidget {
       valueListenable: AppTheme.themeNotifier,
       builder: (_, mode, __) {
         return MaterialApp(
-          title: 'Wareed',
+          title: 'Bloody',
           debugShowCheckedModeBanner: false,
           localizationsDelegates: context.localizationDelegates,
           supportedLocales: context.supportedLocales,
@@ -89,9 +89,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     _hasCompletedInitialLoad = true;
 
     if (!authState.isAuthenticated) {
-      return authState.hasSeenOnboarding
-          ? const LoginScreen()
-          : const OnboardingScreen();
+      return authState.hasSeenOnboarding ? const LoginScreen() : const OnboardingScreen();
     }
 
     if (!_fcmInitialized) {
