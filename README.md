@@ -83,27 +83,30 @@
 
 ## 📸 Screenshots
 
-> 🚧 **Screenshots needed!** Add your app screenshots to `assets/screenshots/` and update this section.
+### 🔐 Authentication
+| Login Screen |
+|:---:|
+| ![Login](assets/screenshots/login_screen.jpg) |
 
-<!-- 
-Recommended screenshots to capture:
-| Splash Screen | Onboarding | Login |
+### 🩸 Donor Experience
+| Home Screen | Map View | Leaderboard |
 |:---:|:---:|:---:|
-| Intro animation | App features walkthrough | Auth screen |
+| ![Donor Home](assets/screenshots/donor_homescreen.jpg) | ![Donor Map](assets/screenshots/donor_homescreen_map.jpg) | ![Leaderboard](assets/screenshots/leaderboard_screen.jpg) |
 
-| Donor Dashboard | Receiver Map | Blood Centers |
+### 🏥 Receiver Experience
+| Home Screen | Map View | Donor Details |
 |:---:|:---:|:---:|
-| Personal stats & deferral | Nearby donors map | Center directory |
+| ![Receiver Home](assets/screenshots/receiver_homescreen.jpg) | ![Receiver Map](assets/screenshots/receiver_homescreen_map.jpg) | ![Donor Dialog](assets/screenshots/receiver_homescreen_dialog.jpg) |
 
-| Leaderboard | Admin Inventory | Settings |
-|:---:|:---:|:---:|
-| Top donors ranking | Stock management | Profile & preferences |
+### 🏛️ Blood Centers
+| Centers List | Map View |
+|:---:|:---:|
+| ![Centers List](assets/screenshots/blood_centers.jpg) | ![Centers Map](assets/screenshots/blood_centers_map.jpg) |
 
-Onboarding is included to help first-time users understand:
-- How the app connects donors and receivers
-- Blood donation rules and eligibility
-- Privacy and safety features
--->
+### ⚙️ Admin & Settings
+| Admin Dashboard | Settings |
+|:---:|:---:|
+| ![Admin Home](assets/screenshots/admin_homescreen.jpg) | ![Settings](assets/screenshots/settings_screen.jpg) |
 
 ---
 
