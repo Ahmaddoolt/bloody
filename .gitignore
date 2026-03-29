@@ -49,3 +49,5 @@ app.*.map.json
 /.dart_tool/
 /.idea/
 *.iml
+*.heapsnapshot
+firebase-key.json
