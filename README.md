@@ -83,30 +83,54 @@
 
 ## 📸 Screenshots
 
-### 🔐 Authentication
-| Login Screen |
-|:---:|
-| ![Login](assets/screenshots/login_screen.jpg) |
+<p align="center">
+  <img src="assets/screenshots/login_screen.jpg" width="200" alt="Login">
+</p>
+<p align="center"><strong>🔐 Login Screen</strong></p>
 
 ### 🩸 Donor Experience
-| Home Screen | Map View | Leaderboard |
-|:---:|:---:|:---:|
-| ![Donor Home](assets/screenshots/donor_homescreen.jpg) | ![Donor Map](assets/screenshots/donor_homescreen_map.jpg) | ![Leaderboard](assets/screenshots/leaderboard_screen.jpg) |
+<p align="center">
+  <img src="assets/screenshots/donor_homescreen.jpg" width="200" alt="Donor Home">
+  <img src="assets/screenshots/donor_homescreen_map.jpg" width="200" alt="Donor Map">
+  <img src="assets/screenshots/leaderboard_screen.jpg" width="200" alt="Leaderboard">
+</p>
+<p align="center">
+  <strong>Home</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Map View</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Leaderboard</strong>
+</p>
 
 ### 🏥 Receiver Experience
-| Home Screen | Map View | Donor Details |
-|:---:|:---:|:---:|
-| ![Receiver Home](assets/screenshots/receiver_homescreen.jpg) | ![Receiver Map](assets/screenshots/receiver_homescreen_map.jpg) | ![Donor Dialog](assets/screenshots/receiver_homescreen_dialog.jpg) |
+<p align="center">
+  <img src="assets/screenshots/receiver_homescreen.jpg" width="200" alt="Receiver Home">
+  <img src="assets/screenshots/receiver_homescreen_map.jpg" width="200" alt="Receiver Map">
+  <img src="assets/screenshots/receiver_homescreen_dialog.jpg" width="200" alt="Donor Details">
+</p>
+<p align="center">
+  <strong>Home</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Map View</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Donor Details</strong>
+</p>
 
 ### 🏛️ Blood Centers
-| Centers List | Map View |
-|:---:|:---:|
-| ![Centers List](assets/screenshots/blood_centers.jpg) | ![Centers Map](assets/screenshots/blood_centers_map.jpg) |
+<p align="center">
+  <img src="assets/screenshots/blood_centers.jpg" width="200" alt="Centers List">
+  <img src="assets/screenshots/blood_centers_map.jpg" width="200" alt="Centers Map">
+</p>
+<p align="center">
+  <strong>Centers List</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Map View</strong>
+</p>
 
 ### ⚙️ Admin & Settings
-| Admin Dashboard | Settings |
-|:---:|:---:|
-| ![Admin Home](assets/screenshots/admin_homescreen.jpg) | ![Settings](assets/screenshots/settings_screen.jpg) |
+<p align="center">
+  <img src="assets/screenshots/admin_homescreen.jpg" width="200" alt="Admin Dashboard">
+  <img src="assets/screenshots/settings_screen.jpg" width="200" alt="Settings">
+</p>
+<p align="center">
+  <strong>Admin Dashboard</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Settings</strong>
+</p>
 
 ---
 
