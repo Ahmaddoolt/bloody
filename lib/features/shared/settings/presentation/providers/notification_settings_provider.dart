@@ -50,6 +50,7 @@ class NotificationSettingsNotifier
     if (_userId == null) return;
 
     final previousState = state;
+    if (previousState.value == null) return;
     state = AsyncValue.data(
       previousState.value!.copyWith(receiveLowStockAlerts: value),
     );
@@ -70,6 +71,7 @@ class NotificationSettingsNotifier
     if (_userId == null) return;
 
     final previousState = state;
+    if (previousState.value == null) return;
     state = AsyncValue.data(
       previousState.value!.copyWith(receiveSystemNotifications: value),
     );

@@ -5,6 +5,7 @@ abstract class AdminHomeRepository {
     required int limit,
     required int offset,
     String? searchQuery,
+    String? city,
   });
 
   Future<Map<String, int>> fetchCenterStockTotals();

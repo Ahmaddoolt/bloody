@@ -13,12 +13,17 @@ class AdminHomeRepositoryImpl implements AdminHomeRepository {
     required int limit,
     required int offset,
     String? searchQuery,
+    String? city,
   }) async {
     try {
       var query = _supabase.from('centers').select();
 
       if (searchQuery != null && searchQuery.isNotEmpty) {
         query = query.ilike('name', '%$searchQuery%');
+      }
+
+      if (city != null && city.isNotEmpty) {
+        query = query.eq('city', city);
       }
 
       final data =

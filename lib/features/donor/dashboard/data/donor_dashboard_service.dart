@@ -46,6 +46,10 @@ class DonorDashboardService {
         query = query.inFilter('blood_type', compatibleTypes);
       }
 
+      if (donorCity != null && donorCity.isNotEmpty) {
+        query = query.eq('city', donorCity);
+      }
+
       final response = await query.range(offset, offset + limit - 1);
       final List<Map<String, dynamic>> receivers =
           List<Map<String, dynamic>>.from(response);

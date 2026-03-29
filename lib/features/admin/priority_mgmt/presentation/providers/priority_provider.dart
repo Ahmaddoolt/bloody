@@ -42,7 +42,22 @@ class PriorityNotifier extends StateNotifier<PriorityState> {
     try {
       await _repository.updatePriorityStatus(userId, 'high');
       state = state.copyWith(
-        requests: state.requests.where((r) => r.id != userId).toList(),
+        requests: state.requests
+            .map((r) => r.id == userId
+                ? PriorityRequestEntity(
+                    id: r.id,
+                    userId: r.userId,
+                    username: r.username,
+                    phone: r.phone,
+                    bloodType: r.bloodType,
+                    city: r.city,
+                    status: 'high',
+                    createdAt: r.createdAt,
+                    bloodRequestReason: r.bloodRequestReason,
+                    fcmToken: r.fcmToken,
+                  )
+                : r)
+            .toList(),
       );
       return true;
     } catch (e) {
@@ -54,6 +69,19 @@ class PriorityNotifier extends StateNotifier<PriorityState> {
   Future<bool> rejectRequest(String userId) async {
     try {
       await _repository.updatePriorityStatus(userId, 'rejected');
+      state = state.copyWith(
+        requests: state.requests.where((r) => r.id != userId).toList(),
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  Future<bool> disableRequest(String userId) async {
+    try {
+      await _repository.updatePriorityStatus(userId, 'none');
       state = state.copyWith(
         requests: state.requests.where((r) => r.id != userId).toList(),
       );

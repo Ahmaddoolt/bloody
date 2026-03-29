@@ -11,6 +11,7 @@ class UserProfileEntity {
   final String? priorityStatus;
   final DateTime? lastDonationDate;
   final String? fcmToken;
+  final String? bloodRequestReason;
 
   const UserProfileEntity({
     required this.id,
@@ -25,6 +26,7 @@ class UserProfileEntity {
     this.priorityStatus,
     this.lastDonationDate,
     this.fcmToken,
+    this.bloodRequestReason,
   });
 
   bool get isDonor => userType == 'donor';
@@ -44,6 +46,7 @@ class UserProfileEntity {
     String? priorityStatus,
     DateTime? lastDonationDate,
     String? fcmToken,
+    String? bloodRequestReason,
   }) {
     return UserProfileEntity(
       id: id ?? this.id,
@@ -58,6 +61,7 @@ class UserProfileEntity {
       priorityStatus: priorityStatus ?? this.priorityStatus,
       lastDonationDate: lastDonationDate ?? this.lastDonationDate,
       fcmToken: fcmToken ?? this.fcmToken,
+      bloodRequestReason: bloodRequestReason ?? this.bloodRequestReason,
     );
   }
 }

@@ -4,7 +4,10 @@ import 'package:bloody/core/services/fcm_service.dart';
 import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
 import 'package:bloody/core/theme/app_spacing.dart';
+import 'package:bloody/features/donor/dashboard/presentation/providers/donor_profile_provider.dart';
+import 'package:bloody/features/receiver/map_finder/presentation/providers/receiver_map_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/providers/auth_provider.dart';
+import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/donor_rules_dialog.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/password_field.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/user_type_selector.dart';
@@ -83,6 +86,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   }
 
   Future<void> _signUp() async {
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedCity == null) {
@@ -120,6 +124,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
         );
       }
       if (!mounted) return;
+
+      ref.invalidate(receiverMapProvider);
+      ref.invalidate(donorProfileProvider);
+      ref.invalidate(profileProvider);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -187,7 +195,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             selectedType: _selectedType,
                             onChanged: isLoading ? (_) {} : _onTypeChanged,
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 16),
                           _InputField(
                             controller: _emailController,
                             label: 'email'.tr(),
@@ -196,7 +204,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             validator: AuthValidators.email,
                             enabled: !isLoading,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           _InputField(
                             controller: _usernameController,
                             label: 'username'.tr(),
@@ -204,14 +212,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             validator: AuthValidators.username,
                             enabled: !isLoading,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           PasswordField(
                             controller: _passwordController,
                             label: 'password'.tr(),
                             validator: AuthValidators.password,
                             showStrengthIndicator: true,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           PasswordField(
                             controller: _confirmPasswordController,
                             label: 'confirm_password'.tr(),
@@ -221,7 +229,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             ),
                             textInputAction: TextInputAction.next,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           _InputField(
                             controller: _phoneController,
                             label: 'phone_number'.tr(),
@@ -230,7 +238,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             validator: AuthValidators.phone,
                             enabled: !isLoading,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           _DropdownField(
                             label: 'city_label'.tr(),
                             icon: Icons.location_city,
@@ -242,13 +250,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             validator: (val) =>
                                 val == null ? 'city_required'.tr() : null,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           _DatePickerField(
                             label: 'date_of_birth'.tr(),
                             selectedDate: _selectedDate,
                             onTap: isLoading ? null : _pickDate,
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           _DropdownField(
                             label: 'blood_type'.tr(),
                             icon: Icons.bloodtype,
@@ -262,7 +270,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             validator: (val) =>
                                 val == null ? 'select_blood_error'.tr() : null,
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 20),
                           _PrimaryButton(
                             label: 'sign_up_enter'.tr(),
                             isLoading: isLoading,
@@ -332,7 +340,7 @@ class _InputField extends StatelessWidget {
           borderSide: BorderSide(color: colorScheme.error, width: 1),
         ),
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -392,7 +400,7 @@ class _DropdownField extends StatelessWidget {
           borderSide: BorderSide(color: colorScheme.error, width: 1),
         ),
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -436,7 +444,7 @@ class _DatePickerField extends StatelessWidget {
             borderSide: BorderSide(color: AppColors.accent, width: 2),
           ),
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
         child: Text(
           selectedDate == null
@@ -490,7 +498,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         duration: const Duration(milliseconds: 100),
         curve: Curves.easeOut,
         child: Container(
-          height: 50,
+          height: 44,
           decoration: BoxDecoration(
             color: widget.onPressed == null
                 ? AppColors.accent.withValues(alpha: 0.5)
@@ -507,7 +515,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
                 : Text(
                     widget.label,
                     style: const TextStyle(
-                      fontSize: 17,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),

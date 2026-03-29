@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../../core/utils/map_marker_helper.dart';
 
 import '../../../../../core/theme/app_colors.dart';
+import '../../../../../core/widgets/app_confirm_dialog.dart';
 import '../../../../../core/utils/map_marker_helper.dart';
 import '../../../../../core/widgets/app_loading_indicator.dart';
 import '../../../../../core/widgets/map_toggle_fab.dart';
@@ -91,31 +92,11 @@ class _CentersScreenState extends ConsumerState<CentersScreen> {
   }
 
   void _deleteCenter(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await AppConfirmDialog.show(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('delete_center'.tr()),
-        content: Text('delete_center_confirm'.tr()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child:
-                Text('cancel'.tr(), style: const TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text('delete'.tr()),
-          ),
-        ],
-      ),
+      title: 'delete_center'.tr(),
+      content: 'delete_center_confirm'.tr(),
+      confirmLabel: 'delete'.tr(),
     );
 
     if (confirm == true) {
@@ -154,7 +135,7 @@ class _CentersScreenState extends ConsumerState<CentersScreen> {
             borderRadius: BorderRadius.circular(24),
           ),
           child: DraggableScrollableSheet(
-            initialChildSize: 0.6,
+            initialChildSize: 0.7,
             minChildSize: 0.4,
             maxChildSize: 0.9,
             expand: false,

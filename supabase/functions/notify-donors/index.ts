@@ -7,7 +7,7 @@ async function getAccessToken(): Promise<string> {
   if (!b64) {
     throw new Error('FIREBASE_SERVICE_ACCOUNT_B64 not set')
   }
-  
+
   const json = JSON.parse(atob(b64))
 
   const privateKeyPem = json.private_key as string
@@ -43,12 +43,12 @@ async function getAccessToken(): Promise<string> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
   })
-  
+
   if (!tokenRes.ok) {
     const error = await tokenRes.text()
     throw new Error(`Failed to get access token: ${error}`)
   }
-  
+
   const tokenData = await tokenRes.json()
   return tokenData.access_token as string
 }
@@ -78,18 +78,45 @@ serve(async (req) => {
   }
 
   try {
-    const { city, title, body, donorIds, tokens: providedTokens } = await req.json()
+    const {
+      city,
+      title,
+      body,
+      donorIds,
+      tokens: providedTokens,
+      notification_user_id,
+      notification_title_key,
+      notification_body_key,
+      notification_type,
+    } = await req.json()
 
-    let tokens: string[]
-    let lookupMode = 'city'
-    let requestedDonorIds = 0
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    if (providedTokens && providedTokens.length > 0) {
-      // Use provided tokens directly (for low stock alerts, etc.)
+    // ── Step 1: Insert in-app notification FIRST (service-role bypasses RLS) ──
+    if (notification_user_id && notification_title_key && notification_body_key) {
+      const { error: notifError } = await supabase.from('notifications').insert({
+        user_id: notification_user_id,
+        title: notification_title_key,
+        body: notification_body_key,
+        type: notification_type ?? 'priority',
+        is_read: false,
+      })
+      if (notifError) {
+        console.error('[notify-donors] Failed to insert notification:', notifError)
+      } else {
+        console.log(`[notify-donors] Inserted notification for user ${notification_user_id}`)
+      }
+    }
+
+    // ── Step 2: Resolve FCM tokens ──
+    let tokens: string[] = []
+    let lookupMode = 'none'
+    let requestedDonorIds = 0
+
+    if (providedTokens && Array.isArray(providedTokens) && providedTokens.length > 0) {
       lookupMode = 'tokens'
       tokens = normalizeTokens(providedTokens)
       console.log(`[notify-donors] Using ${tokens.length} provided tokens`)
@@ -97,9 +124,9 @@ serve(async (req) => {
       lookupMode = 'donorIds'
       const normalizedDonorIds = [...new Set(
         donorIds
-          .filter((donorId): donorId is string => typeof donorId === 'string')
-          .map((donorId) => donorId.trim())
-          .filter((donorId) => donorId.length > 0),
+          .filter((id): id is string => typeof id === 'string')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0),
       )]
       requestedDonorIds = normalizedDonorIds.length
 
@@ -110,19 +137,13 @@ serve(async (req) => {
         .not('fcm_token', 'is', null)
 
       if (dbError) {
-        console.error('[notify-donors] Database error:', dbError)
-        return new Response(JSON.stringify({ error: dbError.message, sent: 0 }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        console.error('[notify-donors] Database error (donorIds):', dbError)
+      } else {
+        tokens = normalizeTokens((donors ?? []).map((d: any) => d.fcm_token))
+        console.log(`[notify-donors] Found ${tokens.length} tokens for ${normalizedDonorIds.length} donor ids`)
       }
-
-      tokens = normalizeTokens((donors ?? []).map((d: any) => d.fcm_token))
-      console.log(
-        `[notify-donors] Found ${tokens.length} tokens for ${normalizedDonorIds.length} donor ids`,
-      )
-    } else {
-      // Query by city (for admin notifications)
+    } else if (city) {
+      lookupMode = 'city'
       const { data: donors, error: dbError } = await supabase
         .from('profiles')
         .select('fcm_token')
@@ -132,18 +153,14 @@ serve(async (req) => {
         .not('fcm_token', 'is', null)
 
       if (dbError) {
-        console.error('[notify-donors] Database error:', dbError)
-        return new Response(JSON.stringify({ error: dbError.message, sent: 0 }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        console.error('[notify-donors] Database error (city):', dbError)
+      } else {
+        tokens = normalizeTokens((donors ?? []).map((d: any) => d.fcm_token))
+        console.log(`[notify-donors] Found ${tokens.length} donors in city: ${city}`)
       }
-
-      tokens = normalizeTokens((donors ?? []).map((d: any) => d.fcm_token))
-      
-      console.log(`[notify-donors] Found ${tokens.length} donors in city: ${city}`)
     }
 
+    // ── Step 3: Send FCM push notifications ──
     if (tokens.length === 0) {
       console.log('[notify-donors] No tokens to send to')
       return new Response(JSON.stringify({
@@ -171,7 +188,6 @@ serve(async (req) => {
 
     const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`
 
-    // Send FCM to each token
     let successCount = 0
     let failCount = 0
 
@@ -208,8 +224,8 @@ serve(async (req) => {
 
     console.log(`[notify-donors] Complete: ${successCount} success, ${failCount} failed`)
 
-    return new Response(JSON.stringify({ 
-      sent: successCount, 
+    return new Response(JSON.stringify({
+      sent: successCount,
       failed: failCount,
       total: tokens.length,
       lookupMode,
@@ -220,9 +236,9 @@ serve(async (req) => {
     })
   } catch (error) {
     console.error('[notify-donors] Error:', error)
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       error: error.message,
-      sent: 0 
+      sent: 0
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

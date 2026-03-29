@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/theme/app_theme.dart';
+import 'package:bloody/core/widgets/app_confirm_dialog.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
 import 'package:bloody/features/shared/auth/presentation/providers/auth_provider.dart';
 import 'package:bloody/features/shared/settings/domain/entities/notification_settings_entity.dart';
+import 'package:bloody/features/donor/dashboard/presentation/providers/donor_profile_provider.dart';
+import 'package:bloody/features/receiver/map_finder/presentation/providers/receiver_map_provider.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/availability_provider.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -32,6 +35,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Timer? _countdownTimer;
   String _remainingTime = '';
   bool _isDeferred = false;
+  bool _isRequestingPriority = false;
   DateTime? _nextEligibleDate;
 
   String get _userId => Supabase.instance.client.auth.currentUser?.id ?? '';
@@ -111,32 +115,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _handleLogout() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppConfirmDialog.show(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('log_out'.tr()),
-        content: Text('logout_confirm'.tr()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child:
-                Text('cancel'.tr(), style: const TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryRed,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: Text('log_out'.tr()),
-          ),
-        ],
-      ),
+      title: 'log_out'.tr(),
+      content: 'logout_confirm'.tr(),
+      confirmLabel: 'log_out'.tr(),
     );
     if (confirmed == true) {
+      ref.invalidate(receiverMapProvider);
+      ref.invalidate(donorProfileProvider);
+      ref.invalidate(profileProvider);
       await ref.read(authNotifierProvider.notifier).signOut();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -305,6 +293,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     bloodType: userProfile?.bloodType,
                     city: userProfile?.city,
                     birthDate: userProfile?.birthDate,
+                    bloodRequestReason: userProfile?.bloodRequestReason,
                   ),
                 ),
               );
@@ -333,6 +322,235 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _buildPriorityRow(isDark, priorityStatus),
           ],
         ],
+      ),
+    );
+  }
+
+  Future<void> _requestPriority() async {
+    if (_isRequestingPriority) return;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    // If reason not yet filled, collect it and submit the request directly.
+    final profile = ref.read(profileProvider).value;
+    if (profile?.bloodRequestReason == null ||
+        profile!.bloodRequestReason!.trim().isEmpty) {
+      _showReasonDialog(submitPriorityAfterSave: true);
+      return;
+    }
+
+    setState(() => _isRequestingPriority = true);
+    try {
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'priority_status': 'pending'}).eq('id', userId);
+
+      if (!mounted) return;
+      await ref.read(profileProvider.notifier).loadProfile(userId);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('error_loading'.tr()),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+      ));
+    } finally {
+      if (mounted) {
+        setState(() => _isRequestingPriority = false);
+      }
+    }
+  }
+
+  void _showReasonDialog({bool submitPriorityAfterSave = false}) {
+    final currentReason =
+        ref.read(profileProvider).value?.bloodRequestReason ?? '';
+    final controller = TextEditingController(text: currentReason);
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          title: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.favorite_rounded,
+                    color: AppColors.accent, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'situation_dialog_title'.tr(),
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Text(
+                'situation_dialog_subtitle'.tr(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.6),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                maxLength: 300,
+                autofocus: true,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: 'situation_hint'.tr(),
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.4),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                        color:
+                            Theme.of(ctx).colorScheme.outline.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: AppColors.accent, width: 1.5),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(ctx)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withOpacity(0.4),
+                  contentPadding: const EdgeInsets.all(14),
+                ),
+              ),
+            ],
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('cancel'.tr()),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final text = controller.text.trim();
+                            if (text.isEmpty) {
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(SnackBar(
+                                content: Text('priority_reason_required'.tr()),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                                margin: const EdgeInsets.all(16),
+                              ));
+                              return;
+                            }
+                            setDialogState(() => isSaving = true);
+                            try {
+                              final payload = <String, dynamic>{
+                                'blood_request_reason': text,
+                              };
+                              if (submitPriorityAfterSave) {
+                                payload['priority_status'] = 'pending';
+                              }
+                              try {
+                                await Supabase.instance.client
+                                    .from('profiles')
+                                    .update(payload)
+                                    .eq('id', userId);
+                              } on PostgrestException catch (error) {
+                                if (error.code != '42703' ||
+                                    !submitPriorityAfterSave) {
+                                  rethrow;
+                                }
+                                await Supabase.instance.client
+                                    .from('profiles')
+                                    .update({'priority_status': 'pending'}).eq(
+                                        'id', userId);
+                              }
+                              if (userId.isNotEmpty) {
+                                await ref
+                                    .read(profileProvider.notifier)
+                                    .loadProfile(userId);
+                              }
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted && submitPriorityAfterSave) {
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(
+                                  content: Text('priority_pending'.tr()),
+                                  backgroundColor: AppColors.accent,
+                                  behavior: SnackBarBehavior.floating,
+                                  margin: const EdgeInsets.all(16),
+                                ));
+                              }
+                            } catch (_) {
+                              setDialogState(() => isSaving = false);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(
+                                  content: Text('error_loading'.tr()),
+                                  backgroundColor: Colors.red,
+                                  behavior: SnackBarBehavior.floating,
+                                  margin: const EdgeInsets.all(16),
+                                ));
+                              }
+                            }
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : Text('situation_submit'.tr()),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -403,6 +621,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
+          if (!isPending && !isApproved)
+            ElevatedButton(
+              onPressed: _isRequestingPriority ? null : _requestPriority,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade700,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(fontSize: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: _isRequestingPriority
+                  ? const AppLoadingIndicator(
+                      size: 16,
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    )
+                  : Text('request_high_priority'.tr()),
+            ),
         ],
       ),
     );
@@ -525,7 +765,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           Switch(
             value: value,
-            activeColor: iconColor,
+            activeColor: const Color(0xFF4CAF50),
+            inactiveThumbColor: Colors.grey.shade400,
+            inactiveTrackColor: Colors.grey.shade300,
             onChanged: onChanged,
           ),
         ],

@@ -165,8 +165,8 @@ class _PodiumCard extends StatelessWidget {
             ),
           // Avatar with blood type
           Container(
-            width: isWinner ? 60 : 48,
-            height: isWinner ? 60 : 48,
+            width: isWinner ? 50 : 38,
+            height: isWinner ? 50 : 38,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -191,7 +191,7 @@ class _PodiumCard extends StatelessWidget {
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
-                  fontSize: isWinner ? 18 : 14,
+                  fontSize: isWinner ? 15 : 12,
                 ),
               ),
             ),
@@ -214,17 +214,23 @@ class _PodiumCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: rankColor.withOpacity(0.1),
+              color: const Color(0xFF2E7D32).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: rankColor.withOpacity(0.3)),
+              border: Border.all(color: const Color(0xFF2E7D32).withOpacity(0.3)),
             ),
-            child: Text(
-              '$points',
-              style: TextStyle(
-                color: rankColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.bolt_rounded, size: 12, color: Color(0xFF2E7D32)),
+                Text(
+                  '$points',
+                  style: const TextStyle(
+                    color: Color(0xFF2E7D32),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),

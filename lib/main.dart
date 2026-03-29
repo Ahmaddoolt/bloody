@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 import 'core/constants/supabase_constants.dart';
 import 'core/layout/main_layout.dart';
@@ -26,6 +27,8 @@ Future<void> main() async {
   );
 
   await AppTheme.initTheme();
+
+  timeago.setLocaleMessages('ar', timeago.ArMessages());
 
   FcmService.setupBackgroundHandler();
 
@@ -51,7 +54,7 @@ class BloodyApp extends StatelessWidget {
       valueListenable: AppTheme.themeNotifier,
       builder: (_, mode, __) {
         return MaterialApp(
-          title: 'Bloody',
+          title: 'Wareed',
           debugShowCheckedModeBanner: false,
           localizationsDelegates: context.localizationDelegates,
           supportedLocales: context.supportedLocales,
@@ -59,6 +62,12 @@ class BloodyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: mode,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: const TextScaler.linear(0.94),
+            ),
+            child: child!,
+          ),
           home: const AuthGate(),
         );
       },

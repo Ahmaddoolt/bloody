@@ -108,6 +108,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
           icon: Icons.bolt_rounded,
           text: '$points ${'points'.tr()}',
           color: const Color(0xFF2E7D32),
+          backgroundColor: const Color(0xFF2E7D32),
         ),
       ],
       actions: [

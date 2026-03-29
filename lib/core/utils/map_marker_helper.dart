@@ -21,12 +21,12 @@ class MapMarkerHelper {
     return _hospitalMarker!;
   }
 
-  /// Get donor marker (green with person icon)
+  /// Get donor marker (green with heart icon)
   static Future<BitmapDescriptor> getDonorMarker() async {
     if (_donorMarker != null) return _donorMarker!;
     _donorMarker = await _createMarker(
-      color: const Color(0xFF4CAF50),
-      icon: Icons.person,
+      color: const Color(0xFF2E7D32),
+      icon: Icons.favorite_rounded,
     );
     return _donorMarker!;
   }
@@ -48,7 +48,7 @@ class MapMarkerHelper {
   }) async {
     final pictureRecorder = ui.PictureRecorder();
     final canvas = Canvas(pictureRecorder);
-    final size = 80.0;
+    final size = 110.0;
 
     // Draw shadow
     final shadowPaint = Paint()
@@ -87,7 +87,7 @@ class MapMarkerHelper {
     textPainter.text = TextSpan(
       text: String.fromCharCode(icon.codePoint),
       style: TextStyle(
-        fontSize: 36,
+        fontSize: 50,
         fontFamily: icon.fontFamily,
         color: Colors.white,
       ),

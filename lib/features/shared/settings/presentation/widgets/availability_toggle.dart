@@ -84,6 +84,8 @@ class AvailabilityToggle extends StatelessWidget {
               value: isAvailable,
               onChanged: onChanged,
               activeColor: const Color(0xFF4CAF50),
+              inactiveThumbColor: Colors.grey.shade400,
+              inactiveTrackColor: Colors.grey.shade300,
             ),
         ],
       ),

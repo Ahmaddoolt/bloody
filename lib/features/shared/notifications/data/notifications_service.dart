@@ -15,6 +15,21 @@ class NotificationsService {
         .order('created_at', ascending: false);
   }
 
+  /// Fetches a page of notifications for the user
+  Future<List<Map<String, dynamic>>> fetchNotifications(
+    String userId, {
+    required int offset,
+    required int limit,
+  }) async {
+    final response = await _supabase
+        .from('notifications')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+    return List<Map<String, dynamic>>.from(response as List);
+  }
+
   /// Marks a specific notification as read
   Future<void> markAsRead(String notificationId) async {
     try {

@@ -1,4 +1,5 @@
 import 'package:bloody/core/constants/app_constants.dart';
+import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/theme/app_theme.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
@@ -13,6 +14,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   final String? bloodType;
   final String? city;
   final String? birthDate;
+  final String? bloodRequestReason;
 
   const EditProfileScreen({
     super.key,
@@ -21,6 +23,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
     this.bloodType,
     this.city,
     this.birthDate,
+    this.bloodRequestReason,
   });
 
   @override
@@ -30,6 +33,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _bloodRequestReasonController = TextEditingController();
   String? _selectedBloodType;
   String? _selectedCity;
   DateTime? _selectedDate;
@@ -42,6 +46,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     super.initState();
     _usernameController.text = widget.username;
     _phoneController.text = widget.phone;
+    _bloodRequestReasonController.text = widget.bloodRequestReason ?? '';
     _selectedBloodType = widget.bloodType;
     _selectedCity = widget.city;
     if (widget.birthDate != null) {
@@ -53,6 +58,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   void dispose() {
     _usernameController.dispose();
     _phoneController.dispose();
+    _bloodRequestReasonController.dispose();
     super.dispose();
   }
 
@@ -67,6 +73,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           city: _selectedCity,
           birthDate: _selectedDate?.toIso8601String().split('T')[0],
         );
+
+    // Save blood request reason directly if changed
+    final reason = _bloodRequestReasonController.text.trim();
+    if (reason != (widget.bloodRequestReason ?? '')) {
+      try {
+        await Supabase.instance.client.from('profiles').update({
+          'blood_request_reason': reason.isEmpty ? null : reason
+        }).eq('id', _userId);
+      } on PostgrestException catch (error) {
+        if (error.code != '42703') rethrow;
+      }
+    }
 
     setState(() => _isLoading = false);
 
@@ -94,7 +112,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fieldFill =
+        colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+    final enabledBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide.none,
+    );
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.accent, width: 2),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -121,12 +150,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _selectedCity,
-              dropdownColor: isDark ? AppTheme.darkCard : Colors.white,
+              dropdownColor: isDark ? AppTheme.darkCard : colorScheme.surface,
               decoration: InputDecoration(
                 labelText: 'city_label'.tr(),
                 prefixIcon: const Icon(Icons.location_city_rounded),
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: fieldFill,
+                border: enabledBorder,
+                enabledBorder: enabledBorder,
+                focusedBorder: focusedBorder,
               ),
               items: AppCities.syrianCities
                   .map((c) => DropdownMenuItem(value: c, child: Text(c.tr())))
@@ -136,12 +168,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _selectedBloodType,
-              dropdownColor: isDark ? AppTheme.darkCard : Colors.white,
+              dropdownColor: isDark ? AppTheme.darkCard : colorScheme.surface,
               decoration: InputDecoration(
                 labelText: 'blood_type'.tr(),
                 prefixIcon: const Icon(Icons.bloodtype_rounded),
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: fieldFill,
+                border: enabledBorder,
+                enabledBorder: enabledBorder,
+                focusedBorder: focusedBorder,
               ),
               items: AppCities.bloodTypes
                   .map((t) => DropdownMenuItem(value: t, child: Text(t)))
@@ -152,13 +187,38 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             ListTile(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
-              tileColor: isDark ? AppTheme.darkCard : Colors.white,
+              tileColor: fieldFill,
               leading: const Icon(Icons.cake_rounded),
               title: Text(_selectedDate != null
                   ? '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}'
                   : 'date_of_birth'.tr()),
               trailing: const Icon(Icons.edit_rounded),
               onTap: _pickDate,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _bloodRequestReasonController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'blood_request_reason_label'.tr(),
+                prefixIcon: const Icon(Icons.bloodtype_rounded),
+                filled: true,
+                fillColor:
+                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: AppColors.accent, width: 2),
+                ),
+              ),
             ),
             const SizedBox(height: 32),
             SizedBox(
@@ -195,7 +255,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
@@ -203,8 +263,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         labelText: label,
         prefixIcon: Icon(icon),
         filled: true,
-        fillColor: isDark ? AppTheme.darkCard : Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.accent, width: 2),
+        ),
       ),
     );
   }

@@ -59,6 +59,7 @@ class AdminHomeState {
   final bool isSortingByStock;
   final int pendingPriorityCount;
   final String searchQuery;
+  final String? selectedCity;
   final String? error;
 
   const AdminHomeState({
@@ -70,6 +71,7 @@ class AdminHomeState {
     this.isSortingByStock = false,
     this.pendingPriorityCount = 0,
     this.searchQuery = '',
+    this.selectedCity,
     this.error,
   });
 
@@ -82,6 +84,7 @@ class AdminHomeState {
     bool? isSortingByStock,
     int? pendingPriorityCount,
     String? searchQuery,
+    String? selectedCity,
     String? error,
     bool clearError = false,
   }) {
@@ -94,6 +97,7 @@ class AdminHomeState {
       isSortingByStock: isSortingByStock ?? this.isSortingByStock,
       pendingPriorityCount: pendingPriorityCount ?? this.pendingPriorityCount,
       searchQuery: searchQuery ?? this.searchQuery,
+      selectedCity: selectedCity ?? this.selectedCity,
       error: clearError ? null : (error ?? this.error),
     );
   }

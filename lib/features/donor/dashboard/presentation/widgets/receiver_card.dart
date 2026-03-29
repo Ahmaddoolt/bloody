@@ -27,7 +27,7 @@ class ReceiverCard extends StatelessWidget {
         ? userData['username']
         : 'receiver'.tr();
     final city = userData['city'];
-    final phone = userData['phone'];
+    final hasPhone = userData['phone']?.toString().trim().isNotEmpty == true;
     final int age = BloodUtils.calculateAge(userData['birth_date']);
 
     final colors = Theme.of(context).colorScheme;
@@ -125,24 +125,27 @@ class ReceiverCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Call Button
-            if (phone != null)
-              GestureDetector(
-                onTap: onCall,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.phone_rounded,
-                    color: AppColors.accent,
-                    size: 20,
-                  ),
+            const SizedBox(width: 8),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IconButton(
+                onPressed: hasPhone ? onCall : null,
+                tooltip:
+                    hasPhone ? 'tap_to_call'.tr() : 'no_phone_available'.tr(),
+                icon: Icon(
+                  Icons.call_rounded,
+                  size: 18,
+                  color: hasPhone
+                      ? AppColors.accent
+                      : colors.onSurface.withValues(alpha: 0.35),
                 ),
               ),
+            ),
           ],
         ),
       ),

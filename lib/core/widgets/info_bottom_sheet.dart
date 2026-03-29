@@ -7,11 +7,13 @@ class InfoRow {
   final IconData icon;
   final String text;
   final Color? color;
+  final Color? backgroundColor;
 
   const InfoRow({
     required this.icon,
     required this.text,
     this.color,
+    this.backgroundColor,
   });
 }
 
@@ -154,14 +156,32 @@ class InfoBottomSheet extends StatelessWidget {
                         color: row.color ?? effectiveAccent,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        row.text,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: row.color ?? colors.onSurface.withOpacity(0.8),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      row.backgroundColor != null
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: row.backgroundColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                row.text,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              row.text,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: row.color ??
+                                    colors.onSurface.withOpacity(0.8),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                     ],
                   ),
                 )),
@@ -174,14 +194,16 @@ class InfoBottomSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: actions.asMap().entries.map((entry) {
                   final index = entry.key;
                   final action = entry.value;
                   final isLast = index == actions.length - 1;
 
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(right: isLast ? 0 : 16),
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: SizedBox(
+                      width: 140,
                       child: _buildActionButton(action, colors),
                     ),
                   );

@@ -43,7 +43,7 @@ class AutoRefreshController {
 
   Future<void> _refreshData() async {
     final profileAsync = _ref.read(donorProfileProvider);
-    final location = _ref.read(donorLocationProvider);
+    final location = _ref.read(donorLocationNotifierProvider);
 
     profileAsync.whenOrNull(
       data: (profile) {

@@ -143,7 +143,9 @@ abstract class FcmService {
 
       final donors = await _supabase
           .from('profiles')
-          .select('fcm_token, language')
+          .select(
+            'fcm_token, language, notification_settings!inner(receive_low_stock_alerts, receive_system_notifications)',
+          )
           .eq('user_type', 'donor')
           .eq('city', city)
           .eq('is_available', true)
@@ -156,9 +158,16 @@ abstract class FcmService {
         final token = donor['fcm_token'] as String?;
         final language = donor['language'] as String? ??
             NotificationTemplates.defaultLanguage;
-        if (token != null) {
-          tokensByLanguage.putIfAbsent(language, () => []).add(token);
+        if (token == null) continue;
+
+        // Respect notification settings
+        final settings = donor['notification_settings'] as Map<String, dynamic>?;
+        if (settings != null) {
+          if (type == 'low_stock' && settings['receive_low_stock_alerts'] == false) continue;
+          if (type != 'low_stock' && settings['receive_system_notifications'] == false) continue;
         }
+
+        tokensByLanguage.putIfAbsent(language, () => []).add(token);
       }
 
       final projectId = await _getFirebaseProjectId();
@@ -172,7 +181,7 @@ abstract class FcmService {
         final notification = NotificationTemplates.getNotification(
           type,
           language,
-          params: {'city': city, 'blood_type': bloodType},
+          params: {'city': _translateCity(city, language), 'blood_type': bloodType},
         );
 
         for (final token in tokens) {
@@ -185,6 +194,27 @@ abstract class FcmService {
       AppLogger.error('FcmService.notifyDonorsInCityLocalized', e, st);
       return false;
     }
+  }
+
+  static String _translateCity(String city, String language) {
+    if (language != 'ar') return city;
+    const translations = {
+      'Damascus': 'دمشق',
+      'Aleppo': 'حلب',
+      'Homs': 'حمص',
+      'Hama': 'حماة',
+      'Latakia': 'اللاذقية',
+      'Tartus': 'طرطوس',
+      'Idlib': 'إدلب',
+      'Daraa': 'درعا',
+      'As-Suwayda': 'السويداء',
+      'Quneitra': 'القنيطرة',
+      'Deir ez-Zor': 'دير الزور',
+      'Al-Hasakah': 'الحسكة',
+      'Raqqa': 'الرقة',
+      'Rif Dimashq': 'ريف دمشق',
+    };
+    return translations[city] ?? city;
   }
 
   static Future<void> _sendFcmMessage(

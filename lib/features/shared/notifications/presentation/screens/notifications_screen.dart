@@ -1,6 +1,5 @@
 // file: lib/shared/features/notifications/presentation/screens/notifications_screen.dart
 import 'package:bloody/core/theme/app_colors.dart';
-import 'package:bloody/core/theme/app_theme.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,12 +19,70 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   final NotificationsService _service = NotificationsService();
+  final ScrollController _scrollController = ScrollController();
+
   late final String? _userId;
+
+  static const int _pageSize = 20;
+
+  final List<Map<String, dynamic>> _notifications = [];
+  bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _offset = 0;
 
   @override
   void initState() {
     super.initState();
     _userId = Supabase.instance.client.auth.currentUser?.id;
+    _scrollController.addListener(_onScroll);
+    if (_userId != null) _loadPage();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_isLoadingMore || !_hasMore) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadPage();
+    }
+  }
+
+  Future<void> _loadPage() async {
+    if (_isLoadingMore || !_hasMore || _userId == null) return;
+
+    setState(() => _isLoadingMore = true);
+
+    final page = await _service.fetchNotifications(
+      _userId!,
+      offset: _offset,
+      limit: _pageSize,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _notifications.addAll(page);
+      _offset += page.length;
+      _hasMore = page.length == _pageSize;
+      _isLoading = false;
+      _isLoadingMore = false;
+    });
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _notifications.clear();
+      _offset = 0;
+      _hasMore = true;
+      _isLoading = true;
+    });
+    await _loadPage();
   }
 
   @override
@@ -34,42 +91,37 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: _buildAppBar(),
+      appBar: AppBar(
+        title: Text('notifications'.tr()),
+        centerTitle: true,
+      ),
       body: _userId == null
-          ? Center(child: Text("not_logged_in".tr()))
-          : StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _service.getNotificationsStream(_userId!),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: AppLoadingIndicator());
-                }
-
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return _buildEmptyState(colors);
-                }
-
-                final notifications = snapshot.data!;
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: notifications.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    return _buildNotificationCard(
-                      notifications[index],
-                      colors,
-                    );
-                  },
-                );
-              },
-            ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: Text('notifications'.tr()),
-      centerTitle: true,
+          ? Center(child: Text('not_logged_in'.tr()))
+          : _isLoading
+              ? const Center(child: AppLoadingIndicator())
+              : _notifications.isEmpty
+                  ? _buildEmptyState(colors)
+                  : RefreshIndicator(
+                      onRefresh: _refresh,
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _notifications.length + (_hasMore ? 1 : 0),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          if (index == _notifications.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(child: AppLoadingIndicator()),
+                            );
+                          }
+                          return _buildNotificationCard(
+                            _notifications[index],
+                            colors,
+                          );
+                        },
+                      ),
+                    ),
     );
   }
 
@@ -112,22 +164,20 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final isRead = note['is_read'] ?? false;
     final type = note['type'];
 
-    // Determine icon and color based on type
     IconData icon;
     Color iconColor;
 
     if (type == 'low_stock_alert') {
       icon = Icons.bloodtype;
-      iconColor = const Color(0xFFE53935); // Red for blood
+      iconColor = const Color(0xFFE53935);
     } else if (type == 'system') {
       icon = Icons.info;
-      iconColor = const Color(0xFF1976D2); // Blue for info
+      iconColor = const Color(0xFF1976D2);
     } else {
       icon = Icons.notifications;
       iconColor = AppColors.accent;
     }
 
-    // Use grey for read notifications
     final effectiveColor =
         isRead ? colors.onSurface.withOpacity(0.4) : iconColor;
 
@@ -147,6 +197,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           onTap: () async {
             if (!isRead) {
               await _service.markAsRead(note['id'].toString());
+              final idx = _notifications.indexWhere(
+                (n) => n['id'] == note['id'],
+              );
+              if (idx != -1 && mounted) {
+                setState(() => _notifications[idx] = {
+                      ..._notifications[idx],
+                      'is_read': true,
+                    });
+              }
             }
           },
           borderRadius: BorderRadius.circular(12),
@@ -154,7 +213,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                // Icon
                 Container(
                   width: 36,
                   height: 36,
@@ -165,14 +223,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   child: Icon(icon, color: effectiveColor, size: 20),
                 ),
                 const SizedBox(width: 12),
-                // Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        note['title'] ?? 'notification'.tr(),
+                        note['title']?.toString().isNotEmpty == true
+                            ? note['title'].toString().tr()
+                            : 'notification'.tr(),
                         style: TextStyle(
                           fontWeight:
                               isRead ? FontWeight.w500 : FontWeight.w600,
@@ -182,7 +241,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        note['body'] ?? '',
+                        note['body']?.toString().tr() ?? '',
                         style: TextStyle(
                           fontSize: 13,
                           color: colors.onSurface.withOpacity(0.6),
@@ -192,7 +251,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        timeago.format(DateTime.parse(note['created_at'])),
+                        timeago.format(
+                          DateTime.parse(note['created_at']),
+                          locale: context.locale.languageCode,
+                        ),
                         style: TextStyle(
                           fontSize: 11,
                           color: colors.onSurface.withOpacity(0.4),

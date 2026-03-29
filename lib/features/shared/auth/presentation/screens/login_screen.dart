@@ -3,10 +3,13 @@ import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/theme/app_spacing.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
 import 'package:bloody/features/admin/home/presentation/screens/admin_home_screen.dart';
+import 'package:bloody/features/donor/dashboard/presentation/providers/donor_profile_provider.dart';
+import 'package:bloody/features/receiver/map_finder/presentation/providers/receiver_map_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/providers/auth_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/password_field.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/remember_me_toggle.dart';
 import 'package:bloody/features/shared/auth/utils/auth_validators.dart';
+import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,6 +79,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     if (result.success) {
       final authState = ref.read(authNotifierProvider);
+
+      ref.invalidate(receiverMapProvider);
+      ref.invalidate(donorProfileProvider);
+      ref.invalidate(profileProvider);
+
       final destination = authState.isAdmin
           ? const AdminHomeScreen()
           : MainLayout(userType: authState.userType ?? 'receiver');

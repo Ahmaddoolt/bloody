@@ -11,11 +11,20 @@ class MapFinderService {
   Future<Map<String, dynamic>?> getReceiverProfile(String userId) async {
     AppLogger.info("Fetching Receiver Profile for: $userId");
     try {
-      return await _supabase
-          .from('profiles')
-          .select('blood_type, city, username')
-          .eq('id', userId)
-          .maybeSingle();
+      try {
+        return await _supabase
+            .from('profiles')
+            .select('blood_type, city, username, blood_request_reason')
+            .eq('id', userId)
+            .maybeSingle();
+      } on PostgrestException catch (error) {
+        if (error.code != '42703') rethrow;
+        return await _supabase
+            .from('profiles')
+            .select('blood_type, city, username')
+            .eq('id', userId)
+            .maybeSingle();
+      }
     } catch (e, stack) {
       AppLogger.error("MapFinderService.getReceiverProfile", e, stack);
       return null;
@@ -45,6 +54,10 @@ class MapFinderService {
 
       if (!isUniversalReceiver) {
         query = query.inFilter('blood_type', compatibleDonors);
+      }
+
+      if (receiverCity != null && receiverCity.isNotEmpty) {
+        query = query.eq('city', receiverCity);
       }
 
       final response = await query.range(offset, offset + limit - 1);
@@ -81,6 +94,8 @@ class MapFinderService {
     AppLogger.info("Confirming donation from Donor ID: $donorId");
     try {
       final today = DateTime.now().toIso8601String().split('T')[0];
+
+      // 1. Get current points (safe query — no optional columns)
       final data = await _supabase
           .from('profiles')
           .select('points')
@@ -88,20 +103,70 @@ class MapFinderService {
           .single();
       final currentPoints = (data['points'] as num?)?.toInt() ?? 0;
 
+      // 2. Update points + last_donation_date
       await _supabase.from('profiles').update({
         'points': currentPoints + 10,
         'last_donation_date': today,
       }).eq('id', donorId);
 
+      // 3. Log donation
       await _supabase
           .from('donations')
           .insert({'donor_id': donorId, 'status': 'completed'});
 
       AppLogger.success("Donation confirmed.");
+
+      // 4. Send notification (separate — must not break donation)
+      _notifyDonorAboutConfirmation(donorId);
+
       return true;
     } catch (e, stack) {
       AppLogger.error("MapFinderService.confirmDonation", e, stack);
       return false;
+    }
+  }
+
+  Future<void> _notifyDonorAboutConfirmation(String donorId) async {
+    try {
+      // Fetch fcm_token + language — resilient to missing columns
+      Map<String, dynamic>? profile;
+      try {
+        profile = await _supabase
+            .from('profiles')
+            .select('fcm_token, language')
+            .eq('id', donorId)
+            .maybeSingle();
+      } on PostgrestException catch (e) {
+        if (e.code != '42703') rethrow;
+        profile = await _supabase
+            .from('profiles')
+            .select('fcm_token')
+            .eq('id', donorId)
+            .maybeSingle();
+      }
+
+      final fcmToken = profile?['fcm_token']?.toString();
+      final isArabic = (profile?['language']?.toString() ?? 'ar') == 'ar';
+
+      await _supabase.functions.invoke(
+        'notify-donors',
+        body: {
+          if (fcmToken != null && fcmToken.isNotEmpty) 'tokens': [fcmToken],
+          'title': isArabic
+              ? '🩸 شكراً لك، بطل!'
+              : '🩸 Thank you, hero!',
+          'body': isArabic
+              ? 'تم تأكيد تبرعك بالدم! لقد أنقذت حياة. ستدخل الآن في فترة تعافي مدتها 90 يوماً. استرح وحافظ على صحتك.'
+              : 'Your blood donation has been confirmed! You saved a life. You are now entering a 90-day recovery period. Rest up and stay healthy.',
+          'notification_user_id': donorId,
+          'notification_title_key': 'donation_confirmed_notif_title',
+          'notification_body_key': 'donation_confirmed_notif_body',
+          'notification_type': 'donation',
+        },
+      );
+      AppLogger.success('Donor $donorId notified about donation confirmation.');
+    } catch (e) {
+      AppLogger.warning('MapFinderService._notifyDonorAboutConfirmation: $e');
     }
   }
 }

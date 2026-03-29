@@ -156,44 +156,6 @@ class CenterCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  // Call Button
-                  if (phone != null)
-                    GestureDetector(
-                      onTap: onCall ?? () => _makeCall(phone),
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: AppColors.accent.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.phone_rounded,
-                          color: AppColors.accent,
-                          size: 18,
-                        ),
-                      ),
-                    ),
-                  if (phone != null) const SizedBox(width: 6),
-                  // Map Button
-                  if (latitude != null && longitude != null)
-                    GestureDetector(
-                      onTap: onMap ?? () => _openMap(latitude, longitude),
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.map_rounded,
-                          color: Colors.blue,
-                          size: 18,
-                        ),
-                      ),
-                    ),
                   // Admin Menu
                   if (isSuperAdmin) ...[
                     const SizedBox(width: 6),

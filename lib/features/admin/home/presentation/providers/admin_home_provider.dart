@@ -44,6 +44,7 @@ class AdminHomeNotifier extends StateNotifier<AdminHomeState> {
         limit: _limit,
         offset: _offset,
         searchQuery: state.searchQuery.isNotEmpty ? state.searchQuery : null,
+        city: state.selectedCity,
       );
 
       state = state.copyWith(
@@ -109,6 +110,12 @@ class AdminHomeNotifier extends StateNotifier<AdminHomeState> {
     state = state.copyWith(searchQuery: '');
     _offset = 0;
     fetchCenters(loadMore: false);
+  }
+
+  Future<void> setCityFilter(String? city) async {
+    state = state.copyWith(selectedCity: city);
+    _offset = 0;
+    await fetchCenters(loadMore: false);
   }
 
   Future<void> sendNotification({

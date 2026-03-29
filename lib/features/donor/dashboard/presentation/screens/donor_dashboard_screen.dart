@@ -126,7 +126,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
   }
 
   void _loadReceivers(Map<String, dynamic> profile) {
-    final location = ref.read(donorLocationProvider);
+    final location = ref.read(donorLocationNotifierProvider);
     final bloodType = profile['blood_type'] as String?;
 
     if (bloodType != null) {
@@ -141,7 +141,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
 
   void _loadMore() {
     final profileAsync = ref.read(donorProfileProvider);
-    final location = ref.read(donorLocationProvider);
+    final location = ref.read(donorLocationNotifierProvider);
 
     profileAsync.whenOrNull(
       data: (profile) {
@@ -171,7 +171,6 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
   Widget build(BuildContext context) {
     final deferralState = ref.watch(deferralTimerProvider);
     final receiverState = ref.watch(receiverListProvider);
-    final isMapView = ref.watch(isMapViewProvider);
     final profileAsync = ref.watch(donorProfileProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -428,7 +427,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
   }
 
   Widget _buildMap(List<Map<String, dynamic>> items) {
-    final location = ref.watch(donorLocationProvider);
+    final location = ref.watch(donorLocationNotifierProvider);
 
     if (location.latitude == null || location.longitude == null) {
       return Center(

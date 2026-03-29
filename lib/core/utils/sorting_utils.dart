@@ -169,10 +169,11 @@ class SortingUtils {
 
   /// Smart Donor Sort Algorithm (For Receivers looking for Donors)
   /// Hierarchy:
-  /// 1. Highest "Gamification Points"
-  /// 2. Matches Requested Blood Type
-  /// 3. Same City
+  /// 1. Same City (most relevant — local help first)
+  /// 2. Exact blood type match
+  /// 3. Other compatible blood types
   /// 4. Nearest Geolocation Distance
+  /// 5. Highest Points (tiebreaker)
   static void sortDonors(
     List<Map<String, dynamic>> donors, {
     required String? receiverBloodType,
@@ -181,56 +182,45 @@ class SortingUtils {
     required double? receiverLng,
   }) {
     donors.sort((a, b) {
-      // 1. Highest Gamification Points
-      final int pointsA = a['points'] ?? 0;
-      final int pointsB = b['points'] ?? 0;
-      if (pointsA != pointsB) {
-        return pointsB.compareTo(pointsA); // Higher points first
+      // 1. Same City
+      if (receiverCity != null) {
+        final bool aSame = a['city'] != null && a['city'] == receiverCity;
+        final bool bSame = b['city'] != null && b['city'] == receiverCity;
+        if (aSame != bSame) return aSame ? -1 : 1;
       }
 
-      // 2. Matches Requested Blood Type (Compatibility)
+      // 2. Exact blood type first, then other compatible types
       if (receiverBloodType != null) {
         final aType = a['blood_type'];
         final bType = b['blood_type'];
-        final compatibleList =
-            BloodUtils.getCompatibleDonors(receiverBloodType);
+        final aExact = aType == receiverBloodType;
+        final bExact = bType == receiverBloodType;
+        if (aExact != bExact) return aExact ? -1 : 1;
 
+        final compatibleList = BloodUtils.getCompatibleDonors(receiverBloodType);
         final aCompatible = compatibleList.contains(aType);
         final bCompatible = compatibleList.contains(bType);
-
-        if (aCompatible != bCompatible) {
-          return aCompatible ? -1 : 1;
-        }
+        if (aCompatible != bCompatible) return aCompatible ? -1 : 1;
       }
 
-      // 3. Same City
-      if (receiverCity != null) {
-        final aCity = a['city'];
-        final bCity = b['city'];
-
-        final bool aSame = (aCity != null && aCity == receiverCity);
-        final bool bSame = (bCity != null && bCity == receiverCity);
-
-        if (aSame != bSame) {
-          return aSame ? -1 : 1;
-        }
-      }
-
-      // 4. Nearest Geolocation Distance
+      // 3. Nearest Geolocation Distance
       if (receiverLat != null && receiverLng != null) {
-        final double? aLat = a['latitude'];
-        final double? aLng = a['longitude'];
-        final double? bLat = b['latitude'];
-        final double? bLng = b['longitude'];
+        final double? aLat = (a['latitude'] as num?)?.toDouble();
+        final double? aLng = (a['longitude'] as num?)?.toDouble();
+        final double? bLat = (b['latitude'] as num?)?.toDouble();
+        final double? bLng = (b['longitude'] as num?)?.toDouble();
 
         if (aLat != null && aLng != null && bLat != null && bLng != null) {
           final distA = calculateDistance(receiverLat, receiverLng, aLat, aLng);
           final distB = calculateDistance(receiverLat, receiverLng, bLat, bLng);
-          return distA.compareTo(distB);
+          if (distA != distB) return distA.compareTo(distB);
         }
       }
 
-      return 0;
+      // 4. Highest Gamification Points (tiebreaker)
+      final int pointsA = (a['points'] as num?)?.toInt() ?? 0;
+      final int pointsB = (b['points'] as num?)?.toInt() ?? 0;
+      return pointsB.compareTo(pointsA);
     });
   }
 

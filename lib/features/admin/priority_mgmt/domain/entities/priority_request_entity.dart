@@ -7,6 +7,8 @@ class PriorityRequestEntity {
   final String? city;
   final String status;
   final DateTime? createdAt;
+  final String? bloodRequestReason;
+  final String? fcmToken;
 
   const PriorityRequestEntity({
     required this.id,
@@ -17,20 +19,25 @@ class PriorityRequestEntity {
     this.city,
     required this.status,
     this.createdAt,
+    this.bloodRequestReason,
+    this.fcmToken,
   });
 
   factory PriorityRequestEntity.fromJson(Map<String, dynamic> json) {
+    // The query fetches flat columns directly from the profiles table.
     return PriorityRequestEntity(
       id: json['id'].toString(),
-      userId: json['user_id']?.toString() ?? '',
-      username: json['profiles']?['username'],
-      phone: json['profiles']?['phone'],
-      bloodType: json['profiles']?['blood_type'],
-      city: json['profiles']?['city'],
-      status: json['priority_status'] ?? 'none',
+      userId: json['id']?.toString() ?? '',
+      username: json['username']?.toString(),
+      phone: json['phone']?.toString(),
+      bloodType: json['blood_type']?.toString(),
+      city: json['city']?.toString(),
+      status: json['priority_status']?.toString() ?? 'none',
       createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'])
+          ? DateTime.tryParse(json['created_at'].toString())
           : null,
+      bloodRequestReason: json['blood_request_reason']?.toString(),
+      fcmToken: json['fcm_token']?.toString(),
     );
   }
 }

@@ -1,276 +1,82 @@
 // file: lib/actors/receiver/map_finder/presentation/screens/receiver_map_screen.dart
 // ignore_for_file: deprecated_member_use
-import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../../../../core/theme/app_theme.dart';
-import '../../../../../../core/utils/map_marker_helper.dart';
+import '../../../../../../core/theme/app_colors.dart';
+import '../../../../../../core/widgets/app_confirm_dialog.dart';
 import '../../../../../../core/widgets/custom_loader.dart';
-import '../../../../../../core/widgets/user_card.dart';
-import '../../data/map_finder_service.dart';
+import '../../../../../../core/widgets/map_toggle_fab.dart';
+import '../../../../shared/settings/presentation/providers/profile_provider.dart';
+import '../../../../shared/settings/presentation/widgets/priority_request_card.dart';
+import '../providers/receiver_map_provider.dart';
+import '../widgets/receiver_blood_type_selector.dart';
+import '../widgets/receiver_donor_list.dart';
+import '../widgets/receiver_donor_map.dart';
+import '../widgets/receiver_donor_sheet.dart';
+import '../widgets/receiver_home_app_bar.dart';
+import '../widgets/receiver_home_states.dart';
 
-class ReceiverHomeScreen extends StatefulWidget {
+class ReceiverHomeScreen extends ConsumerStatefulWidget {
   const ReceiverHomeScreen({super.key});
 
   @override
-  State<ReceiverHomeScreen> createState() => _ReceiverHomeScreenState();
+  ConsumerState<ReceiverHomeScreen> createState() => _ReceiverHomeScreenState();
 }
 
-class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
-  final MapFinderService _service = MapFinderService();
-
-  bool _isMapView = false;
-  final List<Map<String, dynamic>> _donors = [];
-
-  bool _isInitialLoading = true;
-  bool _isLoadingMore = false;
-  bool _hasMore = true;
-
-  final int _limit = 50;
-  int _offset = 0;
+class _ReceiverHomeScreenState extends ConsumerState<ReceiverHomeScreen> {
   final ScrollController _scrollController = ScrollController();
-
-  Position? _currentPosition;
-  Set<Marker> _markers = {};
-  GoogleMapController? _mapController;
-  BitmapDescriptor? _donorMarkerIcon;
-
-  Timer? _autoRefreshTimer;
-  String _statusMessage = '';
-
-  String? _neededBloodType;
-  String? _myCity;
-  String? _myUserId;
-
-  final List<String> _allBloodTypes = [
-    'A+',
-    'A-',
-    'B+',
-    'B-',
-    'AB+',
-    'AB-',
-    'O+',
-    'O-'
-  ];
-
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  bool _hasShownReasonDialog = false;
 
   @override
   void initState() {
     super.initState();
-    _myUserId = Supabase.instance.client.auth.currentUser!.id;
     _scrollController.addListener(_onScroll);
-    _loadMarkerIcon();
-    _initData();
 
-    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
-      if (mounted && _neededBloodType != null) _fetchDonors(loadMore: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(receiverMapProvider.notifier).initialize();
     });
-  }
-
-  Future<void> _loadMarkerIcon() async {
-    final icon = await MapMarkerHelper.getDonorMarker();
-    if (mounted) {
-      setState(() {
-        _donorMarkerIcon = icon;
-      });
-    }
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_isMapView) return;
+    final state = ref.read(receiverMapProvider);
+    if (state.isMapView || state.isLoadingMore || !state.hasMore) return;
+
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      _fetchDonors(loadMore: true);
+      ref.read(receiverMapProvider.notifier).loadMore();
     }
   }
-
-  // ── Init ───────────────────────────────────────────────────────────────────
-
-  Future<void> _initData() async {
-    await _determinePosition();
-    await _fetchInitialProfile();
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && _isInitialLoading) {
-        setState(() => _isInitialLoading = false);
-      }
-    });
-  }
-
-  Future<void> _determinePosition() async {
-    if (!mounted) return;
-    setState(() => _statusMessage = 'checking_location'.tr());
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        setState(() => _statusMessage = 'location_denied'.tr());
-        return;
-      }
-      final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 5));
-      _updateLocation(pos);
-    } catch (_) {
-      try {
-        final last = await Geolocator.getLastKnownPosition();
-        if (last != null) _updateLocation(last);
-      } catch (_) {}
-    }
-  }
-
-  void _updateLocation(Position pos) {
-    if (!mounted) return;
-    setState(() {
-      _currentPosition = pos;
-      _statusMessage = '';
-    });
-    _mapController?.animateCamera(CameraUpdate.newCameraPosition(
-        CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 14)));
-  }
-
-  String? _normalizeBloodType(String? raw) {
-    if (raw == null) return null;
-    final c = raw.trim().toUpperCase();
-    return _allBloodTypes.contains(c) ? c : null;
-  }
-
-  Future<void> _fetchInitialProfile() async {
-    try {
-      final profile = await _service.getReceiverProfile(_myUserId!);
-      if (mounted && profile != null) {
-        final bt = _normalizeBloodType(profile['blood_type']);
-        setState(() {
-          _neededBloodType = bt;
-          _myCity = profile['city'];
-        });
-        if (bt != null) {
-          await _fetchDonors();
-        } else {
-          setState(() => _isInitialLoading = false);
-        }
-      } else {
-        if (mounted) setState(() => _isInitialLoading = false);
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isInitialLoading = false);
-    }
-  }
-
-  Future<void> _fetchDonors({bool loadMore = false}) async {
-    if (_neededBloodType == null) {
-      if (mounted) setState(() => _isInitialLoading = false);
-      return;
-    }
-    if (loadMore && (_isLoadingMore || !_hasMore)) return;
-
-    setState(() {
-      if (loadMore) {
-        _isLoadingMore = true;
-      } else {
-        if (_donors.isEmpty) _isInitialLoading = true;
-        _offset = 0;
-        _hasMore = true;
-        _donors.clear();
-      }
-    });
-
-    try {
-      final fetched = await _service.getCompatibleDonors(
-        receiverBloodType: _neededBloodType!,
-        offset: _offset,
-        limit: _limit,
-        receiverCity: _myCity,
-        receiverLat: _currentPosition?.latitude,
-        receiverLng: _currentPosition?.longitude,
-      );
-      if (mounted) {
-        if (fetched.length < _limit) _hasMore = false;
-        setState(() {
-          _donors.addAll(fetched);
-          _offset += _limit;
-          _isInitialLoading = false;
-          _isLoadingMore = false;
-          _buildMarkers();
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isInitialLoading = false;
-          _isLoadingMore = false;
-        });
-      }
-    }
-  }
-
-  void _buildMarkers() {
-    final markers = <Marker>{};
-    for (final d in _donors) {
-      if (d['latitude'] == null || d['longitude'] == null) continue;
-      markers.add(Marker(
-        markerId: MarkerId(d['id']),
-        position: LatLng(d['latitude'], d['longitude']),
-        icon: _donorMarkerIcon ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        infoWindow: InfoWindow(
-          title: '${'donor'.tr()}: ${d['blood_type']}',
-          snippet: 'tap_to_see_details'.tr(),
-          onTap: () => _showDonorModal(d),
-        ),
-      ));
-    }
-    setState(() => _markers = markers);
-  }
-
-  // ── Actions ────────────────────────────────────────────────────────────────
 
   Future<void> _confirmDonation(String donorId, String donorName) async {
-    final ok = await showDialog<bool>(
+    final shouldConfirm = await AppConfirmDialog.show(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('confirm_donation'.tr()),
-        content: Text('confirm_donation_body'.tr(args: [donorName])),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('cancel'.tr())),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12))),
-              child: Text('yes_confirm'.tr())),
-        ],
-      ),
+      title: 'confirm_donation'.tr(),
+      content: 'confirm_donation_body'.tr(args: [donorName]),
+      confirmLabel: 'yes_confirm'.tr(),
+      confirmColor: Colors.green,
     );
-    if (ok != true) return;
 
-    final success = await _service.confirmDonation(donorId);
+    if (shouldConfirm != true) return;
+
+    final success =
+        await ref.read(receiverMapProvider.notifier).confirmDonation(donorId);
     if (!mounted) return;
+
     if (success) {
       Navigator.pop(context);
       _showSnack('donation_confirmed'.tr(args: [donorName]), Colors.green);
-      _fetchDonors(loadMore: false);
     } else {
       _showSnack('error_updating_donor'.tr(), Colors.red);
     }
@@ -278,233 +84,26 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
 
   void _showDonorModal(Map<String, dynamic> user) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(
-          color: isDark ? AppTheme.darkCard : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Gradient header strip
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppTheme.primaryRed, AppTheme.darkRed],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(right: 12),
-                    decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(2)),
-                  ),
-                  const Icon(Icons.volunteer_activism_rounded,
-                      color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    'donor_details'.tr(),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: Column(
-                children: [
-                  UserCard(
-                    userData: user,
-                    onTap: () {},
-                    onCall: () => _callUser(user['phone']),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _confirmDonation(
-                          user['id'], user['email']?.split('@')[0] ?? 'Donor'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        elevation: 3,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                      ),
-                      icon: const Icon(Icons.check_circle_rounded, size: 20),
-                      label: Text('confirm_they_donated'.tr(),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      builder: (_) => Consumer(
+        builder: (context, ref, _) {
+          final state = ref.watch(receiverMapProvider);
 
-  void _callUser(String? phone) async {
-    if (phone == null) return;
-    final uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) launchUrl(uri);
-  }
-
-  void _showSnack(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500)),
-      backgroundColor: color,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.all(16),
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      appBar: _buildGradientAppBar(),
-      body: Column(children: [
-        _buildBloodTypeSelector(isDark),
-        Expanded(
-            child: _isInitialLoading
-                ? const CustomLoader()
-                : _isMapView
-                    ? _buildMap()
-                    : _buildList(isDark)),
-      ]),
-      floatingActionButton: _buildFABGroup(isDark),
-    );
-  }
-
-  // ── AppBar ─────────────────────────────────────────────────────
-
-  PreferredSizeWidget _buildGradientAppBar() {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      flexibleSpace: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppTheme.primaryRed, AppTheme.darkRed],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-      ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'find_donors'.tr(),
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18),
-            ),
-          ),
-          if (_donors.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${_donors.length}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ── Blood type pill selector ────────────────────────────────────
-
-  Widget _buildBloodTypeSelector(bool isDark) {
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              offset: const Offset(0, 3),
-              blurRadius: 6)
-        ],
-      ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        itemCount: _allBloodTypes.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final t = _allBloodTypes[i];
-          final selected = _neededBloodType == t;
-          return GestureDetector(
-            onTap: () {
-              setState(() => _neededBloodType = t);
-              _fetchDonors(loadMore: false);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppTheme.primaryRed
-                    : (isDark ? AppTheme.darkCard : Colors.grey.shade100),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: selected
-                      ? AppTheme.primaryRed
-                      : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
-                  width: 1.5,
-                ),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: AppTheme.primaryRed.withOpacity(0.3),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Text(
-                t,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: selected
-                      ? Colors.white
-                      : (isDark ? Colors.white70 : Colors.black87),
-                ),
-              ),
+          return ReceiverDonorSheet(
+            user: user,
+            isDark: isDark,
+            isConfirmingDonation: state.isConfirmingDonation,
+            onCall: () => _callUser(user['phone'] as String?),
+            onConfirmDonation: () => _confirmDonation(
+              user['id'] as String,
+              (user['username']?.toString().isNotEmpty == true
+                      ? user['username']
+                      : null) ??
+                  'donor'.tr(),
             ),
           );
         },
@@ -512,281 +111,516 @@ class _ReceiverHomeScreenState extends State<ReceiverHomeScreen> {
     );
   }
 
-  Widget _buildFABGroup(bool isDark) {
-    return FloatingActionButton(
-      heroTag: 'receiver_map_fab',
-      onPressed: () => setState(() => _isMapView = !_isMapView),
-      backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
-      foregroundColor: AppTheme.primaryRed,
-      elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-            color: AppTheme.primaryRed.withOpacity(0.35), width: 1.5),
-      ),
-      child:
-          Icon(_isMapView ? Icons.list_rounded : Icons.map_rounded, size: 22),
-    );
-  }
+  Future<void> _callUser(String? phone) async {
+    if (phone == null) return;
 
-  Widget _buildList(bool isDark) {
-    if (_donors.isEmpty) {
-      return _buildEmptyState(isDark);
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     }
-    return Column(children: [
-      _buildCompatibilityBanner(isDark),
-      Expanded(
-        child: RefreshIndicator(
-          onRefresh: () async => _fetchDonors(loadMore: false),
-          color: AppTheme.primaryRed,
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-            itemCount: _donors.length + (_hasMore ? 1 : 0),
-            itemBuilder: (ctx, i) {
-              if (i == _donors.length) {
-                return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: CustomLoader(size: 28));
-              }
-              return _StaggeredItem(
-                delay: Duration(milliseconds: (i * 60).clamp(0, 600)),
-                child: GestureDetector(
-                  onTap: () => _showDonorModal(_donors[i]),
-                  child: AbsorbPointer(
-                      child: UserCard(
-                          userData: _donors[i], onTap: () {}, onCall: () {})),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    ]);
   }
 
-  Widget _buildEmptyState(bool isDark) {
-    return RefreshIndicator(
-      onRefresh: () async => _fetchDonors(loadMore: false),
-      color: AppTheme.primaryRed,
-      child: LayoutBuilder(builder: (ctx, constraints) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 110,
-                      height: 110,
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          colors: [
-                            AppTheme.primaryRed.withOpacity(0.15),
-                            AppTheme.primaryRed.withOpacity(0.04),
-                          ],
-                        ),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.favorite_rounded,
-                          size: 52, color: AppTheme.primaryRed),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'no_compatible_donors'.tr(args: [_neededBloodType ?? '']),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'check_back_later'.tr(),
-                      style: TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                          color: isDark ? Colors.grey[500] : Colors.grey[500]),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
+  void _showBloodRequestDialog() {
+    final reasonController = TextEditingController();
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
 
-  Widget _buildCompatibilityBanner(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF1B5E20).withOpacity(0.7)
-              : Colors.green.shade50,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-              color: isDark
-                  ? Colors.green.withOpacity(0.3)
-                  : Colors.green.shade200,
-              width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.green.withOpacity(0.12),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle_outline_rounded,
-                size: 14,
-                color: isDark ? Colors.green[300] : Colors.green[700]),
-            const SizedBox(width: 6),
-            Text(
-              'showing_donors_compatible'.tr(args: [_neededBloodType ?? '']),
-              style: TextStyle(
-                  color: isDark ? Colors.green[300] : Colors.green[700],
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12),
-            ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.green.withOpacity(0.2)
-                    : Colors.green.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text('${_donors.length}',
-                  style: TextStyle(
-                      color: isDark ? Colors.green[300] : Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMap() {
-    if (_currentPosition == null) {
-      return Center(
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardTheme.color,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.07),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.1),
+                  shape: BoxShape.circle,
                 ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryRed.withOpacity(0.1),
-                    shape: BoxShape.circle,
+                child: const Icon(Icons.bloodtype_rounded,
+                    color: AppColors.accent, size: 32),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'why_need_blood_title'.tr(),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'why_need_blood_subtitle'.tr(),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'blood_request_reason_label'.tr(),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey.shade400,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text('skip'.tr()),
+                    ),
                   ),
-                  child: const Icon(Icons.location_off_rounded,
-                      color: AppTheme.primaryRed, size: 34),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  _statusMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 15,
-                      color: Theme.of(context).colorScheme.onSurface),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: _determinePosition,
-                  icon: const Icon(Icons.my_location_rounded),
-                  label: Text('retry_gps'.tr()),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryRed,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 14),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        final reason = reasonController.text.trim();
+                        try {
+                          if (reason.isNotEmpty) {
+                            await Supabase.instance.client
+                                .from('profiles')
+                                .update({'blood_request_reason': reason}).eq(
+                                    'id', userId);
+                          }
+                        } on PostgrestException catch (error) {
+                          if (error.code != '42703') {
+                            _showSnack('error_loading'.tr(), Colors.red);
+                            return;
+                          }
+                        }
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                      child: Text('save'.tr()),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ),
-      );
-    }
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-          target:
-              LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          zoom: 14),
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
-      markers: _markers,
-      onMapCreated: (c) => _mapController = c,
+      ),
     );
   }
-}
 
-// ── Staggered list item ────────────────────────────────────────────────────
+  Future<void> _showPrioritySheet() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
 
-class _StaggeredItem extends StatefulWidget {
-  final Widget child;
-  final Duration delay;
-  const _StaggeredItem({required this.child, required this.delay});
+    // Always fetch fresh profile so admin status changes are reflected immediately.
+    if (userId.isNotEmpty) {
+      await ref.read(profileProvider.notifier).loadProfile(userId);
+    }
 
-  @override
-  State<_StaggeredItem> createState() => _StaggeredItemState();
-}
+    if (!mounted) return;
 
-class _StaggeredItemState extends State<_StaggeredItem> {
-  bool _visible = false;
+    final profileAsync = ref.read(profileProvider);
+    final profile = profileAsync.value;
+    final priorityStatus = profile?.priorityStatus ?? 'none';
 
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(widget.delay, () {
-      if (mounted) setState(() => _visible = true);
-    });
+    // For pending/approved states show the status sheet.
+    // For everything else (none, rejected) always show the reason dialog first.
+    if (priorityStatus != 'pending' && priorityStatus != 'high') {
+      _showReasonDialog(submitPriorityAfterSave: true);
+      return;
+    }
+
+    bool isRequesting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              PriorityRequestCard(
+                priorityStatus: priorityStatus,
+                isRequesting: isRequesting,
+                onRequest: () async {
+                  setSheetState(() => isRequesting = true);
+                  try {
+                    await Supabase.instance.client.from('profiles').update(
+                        {'priority_status': 'pending'}).eq('id', userId);
+                    if (userId.isNotEmpty) {
+                      await ref
+                          .read(profileProvider.notifier)
+                          .loadProfile(userId);
+                    }
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  } catch (_) {
+                    if (ctx.mounted) {
+                      setSheetState(() => isRequesting = false);
+                    }
+                    _showSnack('error_loading'.tr(), Colors.red);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSnack(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(fontWeight: FontWeight.w500),
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  /// Shows a dialog for the user to enter their blood request reason.
+  void _showReasonDialog({bool submitPriorityAfterSave = false}) {
+    final currentReason =
+        ref.read(profileProvider).value?.bloodRequestReason ?? '';
+    final controller = TextEditingController(text: currentReason);
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          title: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.favorite_rounded,
+                    color: AppColors.accent, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'situation_dialog_title'.tr(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Text(
+                'situation_dialog_subtitle'.tr(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.6),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                maxLength: 300,
+                autofocus: true,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: 'situation_hint'.tr(),
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.4),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                        color:
+                            Theme.of(ctx).colorScheme.outline.withOpacity(0.4)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                        color:
+                            Theme.of(ctx).colorScheme.outline.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: AppColors.accent, width: 1.5),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(ctx)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withOpacity(0.4),
+                  contentPadding: const EdgeInsets.all(14),
+                ),
+              ),
+            ],
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('cancel'.tr()),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final text = controller.text.trim();
+                            if (text.isEmpty) {
+                              _showSnack(
+                                  'priority_reason_required'.tr(), Colors.red);
+                              return;
+                            }
+                            setDialogState(() => isSaving = true);
+                            try {
+                              final payload = <String, dynamic>{
+                                'blood_request_reason': text,
+                              };
+                              if (submitPriorityAfterSave) {
+                                payload['priority_status'] = 'pending';
+                              }
+                              try {
+                                await Supabase.instance.client
+                                    .from('profiles')
+                                    .update(payload)
+                                    .eq('id', userId);
+                              } on PostgrestException catch (error) {
+                                if (error.code != '42703' ||
+                                    !submitPriorityAfterSave) {
+                                  rethrow;
+                                }
+                                await Supabase.instance.client
+                                    .from('profiles')
+                                    .update({'priority_status': 'pending'}).eq(
+                                        'id', userId);
+                              }
+                              // Refresh the local profile cache
+                              if (userId.isNotEmpty) {
+                                await ref
+                                    .read(profileProvider.notifier)
+                                    .loadProfile(userId);
+                              }
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (submitPriorityAfterSave) {
+                                _showSnack(
+                                    'priority_pending'.tr(), AppColors.accent);
+                              }
+                            } catch (_) {
+                              setDialogState(() => isSaving = false);
+                              _showSnack('error_loading'.tr(), Colors.red);
+                            }
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text('situation_submit'.tr()),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: _visible ? 1.0 : 0.0,
-      duration: const Duration(milliseconds: 300),
-      child: AnimatedSlide(
-        offset: _visible ? Offset.zero : const Offset(0, 0.08),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        child: widget.child,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final state = ref.watch(receiverMapProvider);
+    final donorMarkerIcon = ref.watch(donorMarkerIconProvider).value;
+
+    // Show blood request reason dialog once after profile loads
+    ref.listen<ReceiverMapState>(receiverMapProvider, (prev, curr) {
+      if ((prev?.isInitialLoading ?? true) && !curr.isInitialLoading) {
+        if (curr.city != null &&
+            (curr.bloodRequestReason?.trim().isEmpty ?? true) &&
+            !_hasShownReasonDialog) {
+          _hasShownReasonDialog = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showBloodRequestDialog();
+          });
+        }
+      }
+    });
+
+    return Scaffold(
+      appBar: ReceiverHomeAppBar(
+        state: state,
+        onPriorityTap: _showPrioritySheet,
       ),
+      body: SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final horizontalPadding =
+                _horizontalPaddingFor(constraints.maxWidth);
+
+            return Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    12,
+                    horizontalPadding,
+                    0,
+                  ),
+                  child: ReceiverBloodTypeSelector(
+                    isDark: isDark,
+                    state: state,
+                    onSelect: (bloodType) => ref
+                        .read(receiverMapProvider.notifier)
+                        .selectBloodType(bloodType),
+                  ),
+                ),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: _buildContent(
+                      isDark: isDark,
+                      state: state,
+                      donorMarkerIcon: donorMarkerIcon,
+                      horizontalPadding: horizontalPadding,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      floatingActionButton: MapToggleFab(
+        heroTag: 'receiver_map_fab',
+        isMapView: state.isMapView,
+        onToggle: () => ref.read(receiverMapProvider.notifier).toggleMapView(),
+      ),
+    );
+  }
+
+  double _horizontalPaddingFor(double width) {
+    if (width >= 1200) return 32;
+    if (width >= 900) return 24;
+    return 16;
+  }
+
+  Widget _buildContent({
+    required bool isDark,
+    required ReceiverMapState state,
+    required BitmapDescriptor? donorMarkerIcon,
+    required double horizontalPadding,
+  }) {
+    if (state.isInitialLoading) {
+      return const Center(child: CustomLoader());
+    }
+
+    if (state.hasError && state.donors.isEmpty) {
+      return ReceiverErrorState(
+        horizontalPadding: horizontalPadding,
+        onRetry: () => ref.read(receiverMapProvider.notifier).refresh(),
+      );
+    }
+
+    if (state.neededBloodType == null) {
+      return ReceiverMissingBloodTypeState(
+        horizontalPadding: horizontalPadding,
+      );
+    }
+
+    if (state.isMapView) {
+      return ReceiverDonorMap(
+        state: state,
+        donorMarkerIcon: donorMarkerIcon,
+        horizontalPadding: horizontalPadding,
+        onRetryLocation: () =>
+            ref.read(receiverMapProvider.notifier).retryLocation(),
+        onOpenDonor: _showDonorModal,
+      );
+    }
+
+    if (state.donors.isEmpty) {
+      return ReceiverEmptyState(
+        state: state,
+        horizontalPadding: horizontalPadding,
+        onRefresh: () => ref.read(receiverMapProvider.notifier).refresh(),
+      );
+    }
+
+    return ReceiverDonorList(
+      isDark: isDark,
+      state: state,
+      horizontalPadding: horizontalPadding,
+      scrollController: _scrollController,
+      onRefresh: () => ref.read(receiverMapProvider.notifier).refresh(),
+      onOpenDonor: _showDonorModal,
+      onCall: _callUser,
     );
   }
 }
