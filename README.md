@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/1024.png" alt="Wareed Logo" width="120" height="120">
+
 # 🩸 Wareed — وريد
 
 ### *Connecting Blood Donors with Those Who Need It Most*
@@ -81,15 +83,27 @@
 
 ## 📸 Screenshots
 
-> 🚧 Screenshots coming soon — drop your app screenshots in the `assets/screenshots/` folder and update this section.
+> 🚧 **Screenshots needed!** Add your app screenshots to `assets/screenshots/` and update this section.
 
-| Onboarding | Donor Dashboard | Receiver Map |
+<!-- 
+Recommended screenshots to capture:
+| Splash Screen | Onboarding | Login |
 |:---:|:---:|:---:|
-| ![Onboarding](assets/screenshots/onboarding.png) | ![Donor Dashboard](assets/screenshots/donor_dashboard.png) | ![Receiver Map](assets/screenshots/receiver_map.png) |
+| Intro animation | App features walkthrough | Auth screen |
 
-| Leaderboard | Admin Inventory | Blood Centers |
+| Donor Dashboard | Receiver Map | Blood Centers |
 |:---:|:---:|:---:|
-| ![Leaderboard](assets/screenshots/leaderboard.png) | ![Inventory](assets/screenshots/admin_inventory.png) | ![Centers](assets/screenshots/centers.png) |
+| Personal stats & deferral | Nearby donors map | Center directory |
+
+| Leaderboard | Admin Inventory | Settings |
+|:---:|:---:|:---:|
+| Top donors ranking | Stock management | Profile & preferences |
+
+Onboarding is included to help first-time users understand:
+- How the app connects donors and receivers
+- Blood donation rules and eligibility
+- Privacy and safety features
+-->
 
 ---
 
@@ -343,8 +357,8 @@ lib/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/wareed.git
-cd wareed
+git clone https://github.com/Ahmaddoolt/bloody
+cd bloody
 
 # 2. Install dependencies
 flutter pub get
