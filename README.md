@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/1024.png" alt="Wareed Logo" width="120" height="120">
+
 # 🩸 Wareed — وريد
 
 ### *Connecting Blood Donors with Those Who Need It Most*
@@ -81,15 +83,54 @@
 
 ## 📸 Screenshots
 
-> 🚧 Screenshots coming soon — drop your app screenshots in the `assets/screenshots/` folder and update this section.
+<p align="center">
+  <img src="assets/screenshots/login_screen.jpg" width="200" alt="Login">
+</p>
+<p align="center"><strong>🔐 Login Screen</strong></p>
 
-| Onboarding | Donor Dashboard | Receiver Map |
-|:---:|:---:|:---:|
-| ![Onboarding](assets/screenshots/onboarding.png) | ![Donor Dashboard](assets/screenshots/donor_dashboard.png) | ![Receiver Map](assets/screenshots/receiver_map.png) |
+### 🩸 Donor Experience
+<p align="center">
+  <img src="assets/screenshots/donor_homescreen.jpg" width="200" alt="Donor Home">
+  <img src="assets/screenshots/donor_homescreen_map.jpg" width="200" alt="Donor Map">
+  <img src="assets/screenshots/leaderboard_screen.jpg" width="200" alt="Leaderboard">
+</p>
+<p align="center">
+  <strong>Home</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Map View</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Leaderboard</strong>
+</p>
 
-| Leaderboard | Admin Inventory | Blood Centers |
-|:---:|:---:|:---:|
-| ![Leaderboard](assets/screenshots/leaderboard.png) | ![Inventory](assets/screenshots/admin_inventory.png) | ![Centers](assets/screenshots/centers.png) |
+### 🏥 Receiver Experience
+<p align="center">
+  <img src="assets/screenshots/receiver_homescreen.jpg" width="200" alt="Receiver Home">
+  <img src="assets/screenshots/receiver_homescreen_map.jpg" width="200" alt="Receiver Map">
+  <img src="assets/screenshots/receiver_homescreen_dialog.jpg" width="200" alt="Donor Details">
+</p>
+<p align="center">
+  <strong>Home</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Map View</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Donor Details</strong>
+</p>
+
+### 🏛️ Blood Centers
+<p align="center">
+  <img src="assets/screenshots/blood_centers.jpg" width="200" alt="Centers List">
+  <img src="assets/screenshots/blood_centers_map.jpg" width="200" alt="Centers Map">
+</p>
+<p align="center">
+  <strong>Centers List</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Map View</strong>
+</p>
+
+### ⚙️ Admin & Settings
+<p align="center">
+  <img src="assets/screenshots/admin_homescreen.jpg" width="200" alt="Admin Dashboard">
+  <img src="assets/screenshots/settings_screen.jpg" width="200" alt="Settings">
+</p>
+<p align="center">
+  <strong>Admin Dashboard</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>Settings</strong>
+</p>
 
 ---
 
@@ -343,8 +384,8 @@ lib/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/wareed.git
-cd wareed
+git clone https://github.com/Ahmaddoolt/bloody
+cd bloody
 
 # 2. Install dependencies
 flutter pub get
