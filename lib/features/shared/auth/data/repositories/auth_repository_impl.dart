@@ -1,7 +1,9 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:easy_localization/easy_localization.dart';
 
+import '../../../../../core/constants/app_constants.dart';
 import '../../../../../core/utils/api_logger.dart';
 import '../../../../../core/utils/app_logger.dart';
 import '../../utils/auth_error_mapper.dart';
@@ -76,6 +78,12 @@ class AuthRepositoryImpl implements AuthRepository {
         data: profile,
       );
 
+      if (_isForbidden(profile)) {
+        await _supabase.auth.signOut();
+        _currentUser = null;
+        return AuthResult.failure('account_forbidden_desc'.tr());
+      }
+
       _currentUser = _mapProfileToUser(res.user!.id, profile);
       return AuthResult.success(
         user: _currentUser,
@@ -105,9 +113,20 @@ class AuthRepositoryImpl implements AuthRepository {
     required String bloodType,
     required String city,
     required DateTime birthDate,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
-      final position = await _getCurrentLocation();
+      double? lat = latitude;
+      double? lng = longitude;
+
+      if (lat == null || lng == null) {
+        // User didn't explicitly pin — try live GPS then city centre fallback
+        final position = await _getCurrentLocation();
+        final cityCoords = AppCities.cityCoordinates[city];
+        lat = position?.latitude ?? cityCoords?[0];
+        lng = position?.longitude ?? cityCoords?[1];
+      }
 
       final res = await _supabase.auth.signUp(
         email: email.trim(),
@@ -143,8 +162,8 @@ class AuthRepositoryImpl implements AuthRepository {
         'user_type': userType,
         'blood_type': bloodType,
         'city': city,
-        'latitude': position?.latitude,
-        'longitude': position?.longitude,
+        'latitude': lat,
+        'longitude': lng,
         'birth_date': birthDate.toIso8601String().split('T')[0],
         'points': 0,
         'is_available': true,
@@ -171,8 +190,8 @@ class AuthRepositoryImpl implements AuthRepository {
         bloodType: bloodType,
         city: city,
         birthDate: birthDate,
-        latitude: position?.latitude,
-        longitude: position?.longitude,
+        latitude: lat,
+        longitude: lng,
       );
 
       return AuthResult.success(user: _currentUser, userType: userType);
@@ -299,6 +318,12 @@ class AuthRepositoryImpl implements AuthRepository {
         data: profile,
       );
 
+      if (_isForbidden(profile)) {
+        await _supabase.auth.signOut();
+        _currentUser = null;
+        return AuthResult.failure('account_forbidden_desc'.tr());
+      }
+
       _currentUser = _mapProfileToUser(session.user.id, profile);
       return AuthResult.success(
         user: _currentUser,
@@ -349,5 +374,9 @@ class AuthRepositoryImpl implements AuthRepository {
       longitude: profile['longitude']?.toDouble(),
       language: profile['language'] ?? 'ar',
     );
+  }
+
+  bool _isForbidden(Map<String, dynamic> profile) {
+    return profile['is_forbidden'] == true;
   }
 }

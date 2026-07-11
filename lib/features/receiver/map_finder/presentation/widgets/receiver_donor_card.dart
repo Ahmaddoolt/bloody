@@ -26,6 +26,7 @@ class ReceiverDonorCard extends StatelessWidget {
     final hasPhone = userData['phone']?.toString().trim().isNotEmpty == true;
     final points = (userData['points'] as num?)?.toInt() ?? 0;
     final age = BloodUtils.calculateAge(userData['birth_date']);
+    final isVerified = userData['verification_status'] == 'verified';
     final colors = Theme.of(context).colorScheme;
 
     return Container(
@@ -121,6 +122,8 @@ class ReceiverDonorCard extends StatelessWidget {
                           ),
                         ),
                       ],
+                      const SizedBox(width: 6),
+                      _VerificationBadge(isVerified: isVerified),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -204,6 +207,34 @@ class _MetaChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VerificationBadge extends StatelessWidget {
+  final bool isVerified;
+
+  const _VerificationBadge({required this.isVerified});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isVerified ? const Color(0xFF2E7D32) : Colors.grey;
+
+    return Tooltip(
+      message: isVerified ? 'verified_account'.tr() : 'not_verified'.tr(),
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          isVerified ? Icons.verified_rounded : Icons.verified_outlined,
+          color: color,
+          size: 15,
+        ),
       ),
     );
   }

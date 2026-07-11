@@ -42,6 +42,8 @@ class DonorDashboardService {
       var query =
           _supabase.from('profiles').select().eq('user_type', 'receiver');
 
+      query = query.eq('is_forbidden', false);
+
       if (!isUniversalDonor) {
         query = query.inFilter('blood_type', compatibleTypes);
       }
@@ -50,11 +52,10 @@ class DonorDashboardService {
         query = query.eq('city', donorCity);
       }
 
-      final response = await query.range(offset, offset + limit - 1);
+      final response = await query;
       final List<Map<String, dynamic>> receivers =
           List<Map<String, dynamic>>.from(response);
 
-      // Apply Smart Sorting
       SortingUtils.sortNeedyUsers(
         receivers,
         donorBloodType: donorBloodType,
@@ -63,8 +64,12 @@ class DonorDashboardService {
         donorLng: donorLng,
       );
 
-      AppLogger.success("Found ${receivers.length} compatible receivers.");
-      return receivers;
+      final page = receivers.skip(offset).take(limit).toList();
+
+      AppLogger.success(
+        "Found ${receivers.length} compatible receivers, returning ${page.length}.",
+      );
+      return page;
     } catch (e, stack) {
       AppLogger.error("DonorDashboardService.getCompatibleReceivers", e, stack);
       rethrow;
@@ -72,7 +77,10 @@ class DonorDashboardService {
   }
 
   /// Gets total count of compatible receivers
-  Future<int> getCompatibleReceiversCount(String donorBloodType) async {
+  Future<int> getCompatibleReceiversCount(
+    String donorBloodType, {
+    String? donorCity,
+  }) async {
     try {
       final List<String> compatibleTypes =
           BloodUtils.getCompatibleReceivers(donorBloodType);
@@ -81,8 +89,14 @@ class DonorDashboardService {
       var query =
           _supabase.from('profiles').select().eq('user_type', 'receiver');
 
+      query = query.eq('is_forbidden', false);
+
       if (!isUniversalDonor) {
         query = query.inFilter('blood_type', compatibleTypes);
+      }
+
+      if (donorCity != null && donorCity.isNotEmpty) {
+        query = query.eq('city', donorCity);
       }
 
       final response = await query;

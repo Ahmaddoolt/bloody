@@ -83,8 +83,10 @@ class ReceiverListNotifier extends StateNotifier<ReceiverListState> {
       // Fetch receivers and total count in parallel for fresh loads
       int totalCount = state.totalCount;
       if (!loadMore) {
-        final countFuture =
-            _service.getCompatibleReceiversCount(donorBloodType);
+        final countFuture = _service.getCompatibleReceiversCount(
+          donorBloodType,
+          donorCity: donorCity,
+        );
         totalCount = await countFuture;
       }
 
@@ -101,7 +103,7 @@ class ReceiverListNotifier extends StateNotifier<ReceiverListState> {
 
       state = state.copyWith(
         items: newItems,
-        hasMore: receivers.length >= state.limit,
+        hasMore: currentOffset + receivers.length < totalCount,
         offset: currentOffset + state.limit,
         isLoading: false,
         isLoadingMore: false,

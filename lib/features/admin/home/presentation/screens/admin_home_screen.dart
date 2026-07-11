@@ -8,10 +8,12 @@ import 'package:bloody/features/shared/centers_list/presentation/widgets/blood_s
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:bloody/core/widgets/map_toggle_fab.dart';
+import 'package:bloody/features/admin/account_moderation/presentation/screens/account_moderation_screen.dart';
 import 'package:bloody/features/admin/home/domain/entities/admin_home_entity.dart';
 import 'package:bloody/features/admin/home/presentation/providers/admin_home_provider.dart';
 import 'package:bloody/features/admin/priority_mgmt/presentation/screens/admin_priority_screen.dart';
 import 'package:bloody/features/admin/donor_rewards/presentation/screens/admin_donor_rewards_screen.dart';
+import 'package:bloody/features/shared/account_verification/presentation/screens/admin_verification_screen.dart';
 import 'package:bloody/features/shared/auth/presentation/providers/auth_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/screens/login_screen.dart';
 import 'package:bloody/features/shared/centers_list/presentation/providers/centers_provider.dart';
@@ -1176,6 +1178,20 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen>
                       context.setLocale(const Locale('en'));
                     } else if (val == 'ar') {
                       context.setLocale(const Locale('ar'));
+                    } else if (val == 'moderation') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AccountModerationScreen(),
+                        ),
+                      );
+                    } else if (val == 'verification') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminVerificationScreen(),
+                        ),
+                      );
                     } else if (val == 'logout') {
                       _logout();
                     }
@@ -1196,6 +1212,30 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen>
                         SizedBox(width: 12),
                         Text('العربية'),
                       ]),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'moderation',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.block_rounded, color: Colors.red),
+                          const SizedBox(width: 12),
+                          Text('manage_accounts'.tr()),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'verification',
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.verified_user_rounded,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 12),
+                          Text('manage_verifications'.tr()),
+                        ],
+                      ),
                     ),
                     const PopupMenuDivider(),
                     PopupMenuItem(
@@ -1273,6 +1313,7 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen>
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: DropdownButtonFormField<String?>(
+        key: ValueKey(state.selectedCity ?? 'all_cities'),
         initialValue: state.selectedCity,
         decoration: InputDecoration(
           labelText: 'city_label'.tr(),

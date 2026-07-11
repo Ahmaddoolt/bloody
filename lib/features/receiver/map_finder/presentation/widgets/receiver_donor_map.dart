@@ -42,8 +42,7 @@ class ReceiverDonorMap extends StatelessWidget {
   Widget build(BuildContext context) {
     // Show error state only when both GPS and city fallback are unavailable
     if (state.currentPosition == null && state.fallbackLatLng == null) {
-      final statusMessage =
-          state.statusKey.isEmpty ? '' : state.statusKey.tr();
+      final statusMessage = state.statusKey.isEmpty ? '' : state.statusKey.tr();
 
       return ReceiverLocationState(
         statusMessage: statusMessage,
@@ -67,7 +66,8 @@ class ReceiverDonorMap extends StatelessWidget {
 
       LatLng? position;
       if (latitude != null && longitude != null) {
-        position = LatLng((latitude as num).toDouble(), (longitude as num).toDouble());
+        position =
+            LatLng((latitude as num).toDouble(), (longitude as num).toDouble());
       } else if (city != null) {
         position = _syrianCityCoordinates[city];
       }

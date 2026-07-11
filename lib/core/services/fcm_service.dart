@@ -148,6 +148,7 @@ abstract class FcmService {
           )
           .eq('user_type', 'donor')
           .eq('city', city)
+          .eq('is_forbidden', false)
           .eq('is_available', true)
           .not('fcm_token', 'is', null);
 
@@ -161,10 +162,13 @@ abstract class FcmService {
         if (token == null) continue;
 
         // Respect notification settings
-        final settings = donor['notification_settings'] as Map<String, dynamic>?;
+        final settings =
+            donor['notification_settings'] as Map<String, dynamic>?;
         if (settings != null) {
-          if (type == 'low_stock' && settings['receive_low_stock_alerts'] == false) continue;
-          if (type != 'low_stock' && settings['receive_system_notifications'] == false) continue;
+          if (type == 'low_stock' &&
+              settings['receive_low_stock_alerts'] == false) continue;
+          if (type != 'low_stock' &&
+              settings['receive_system_notifications'] == false) continue;
         }
 
         tokensByLanguage.putIfAbsent(language, () => []).add(token);
@@ -181,7 +185,10 @@ abstract class FcmService {
         final notification = NotificationTemplates.getNotification(
           type,
           language,
-          params: {'city': _translateCity(city, language), 'blood_type': bloodType},
+          params: {
+            'city': _translateCity(city, language),
+            'blood_type': bloodType
+          },
         );
 
         for (final token in tokens) {

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bloody/core/constants/app_support.dart';
 import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/theme/app_theme.dart';
 import 'package:bloody/core/widgets/app_confirm_dialog.dart';
@@ -8,12 +9,14 @@ import 'package:bloody/features/shared/auth/presentation/providers/auth_provider
 import 'package:bloody/features/shared/settings/domain/entities/notification_settings_entity.dart';
 import 'package:bloody/features/donor/dashboard/presentation/providers/donor_profile_provider.dart';
 import 'package:bloody/features/receiver/map_finder/presentation/providers/receiver_map_provider.dart';
+import 'package:bloody/features/shared/account_verification/presentation/screens/donor_verification_screen.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/availability_provider.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../notifications/presentation/screens/notifications_screen.dart';
@@ -23,6 +26,8 @@ import '../widgets/eligibility_timer.dart';
 import '../widgets/profile_card.dart';
 import 'donation_history_screen.dart';
 import 'edit_profile_screen.dart';
+import '../../../../admin/inventory/presentation/providers/managed_center_provider.dart';
+import '../../../../admin/inventory/presentation/screens/center_inventory_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -135,6 +140,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _openSupportEmail() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: AppSupport.email,
+      queryParameters: {'subject': 'Bloody Support'},
+    );
+
+    try {
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted || launched) return;
+    } catch (_) {
+      if (!mounted) return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('support_email_error'.tr()),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -143,6 +173,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final notificationSettings = ref.watch(notificationSettingsProvider);
     final isDonor = profileAsync.value?.isDonor ?? true;
     final priorityStatus = profileAsync.value?.priorityStatus ?? 'none';
+    final managedCenter = ref.watch(managedCenterProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -161,13 +192,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       isDonor, priorityStatus, isDark),
                   const SizedBox(height: 24),
 
-                  // Section 2: Notification Settings
+                  // Section 2: Center Management (visible only to assigned managers)
+                  if (managedCenter.value != null) ...[
+                    _buildSectionHeader('center_management'.tr()),
+                    const SizedBox(height: 12),
+                    _buildManagedCenterCard(managedCenter.value!, isDark),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Section 3: Notification Settings
                   _buildSectionHeader('notification_preferences'.tr()),
                   const SizedBox(height: 12),
                   _buildNotificationToggles(isDark, notificationSettings),
                   const SizedBox(height: 24),
 
-                  // Section 3: App Settings
+                  // Section 4: App Settings
                   _buildSectionHeader('app_settings'.tr()),
                   const SizedBox(height: 12),
                   _buildPreferencesCard(isDark),
@@ -292,6 +331,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     phone: userProfile?.phone ?? '',
                     bloodType: userProfile?.bloodType,
                     city: userProfile?.city,
+                    latitude: userProfile?.latitude,
+                    longitude: userProfile?.longitude,
                     birthDate: userProfile?.birthDate,
                     bloodRequestReason: userProfile?.bloodRequestReason,
                   ),
@@ -307,6 +348,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               isEligible: !_isDeferred,
               remainingTime: _remainingTime,
               progress: _calculateProgress(),
+            ),
+            Divider(height: 1, color: colors.outline.withOpacity(0.1)),
+            _buildActionRow(
+              icon: Icons.verified_user_outlined,
+              iconColor: AppColors.accent,
+              label: 'account_verification'.tr(),
+              subtitle: _verificationSubtitle(
+                userProfile?.verificationStatus ?? 'unverified',
+              ),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DonorVerificationScreen(),
+                  ),
+                );
+                _loadData();
+              },
             ),
           ],
           // Availability toggle
@@ -648,6 +707,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _buildManagedCenterCard(Map<String, dynamic> center, bool isDark) {
+    final colors = Theme.of(context).colorScheme;
+    final centerName = center['name']?.toString() ?? '';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.outline.withOpacity(0.1)),
+      ),
+      child: _buildActionRow(
+        icon: Icons.local_hospital_rounded,
+        iconColor: AppColors.accent,
+        label: 'manage_my_center'.tr(),
+        subtitle:
+            centerName.isNotEmpty ? centerName : 'manage_my_center_desc'.tr(),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CenterInventoryScreen(center: center),
+            ),
+          );
+          ref.invalidate(managedCenterProvider);
+        },
+      ),
+    );
+  }
+
   Widget _buildNotificationToggles(bool isDark, AsyncValue settingsAsync) {
     return settingsAsync.when(
       loading: () => Container(
@@ -775,6 +863,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _buildActionRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: colors.onSurface.withOpacity(0.4),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _verificationSubtitle(String status) {
+    return switch (status) {
+      'pending' => 'verification_pending'.tr(),
+      'verified' => 'verified_account'.tr(),
+      'rejected' => 'verification_rejected'.tr(),
+      _ => 'account_verification_desc'.tr(),
+    };
+  }
+
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
@@ -833,6 +989,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   .setLocale(val ? const Locale('ar') : const Locale('en'));
               setState(() {});
             },
+          ),
+          Divider(height: 1, color: colors.outline.withOpacity(0.1)),
+          _buildActionRow(
+            icon: Icons.support_agent_rounded,
+            iconColor: const Color(0xFF1976D2),
+            label: 'contact_support'.tr(),
+            subtitle: '${'support_desc'.tr()} ${AppSupport.email}',
+            onTap: _openSupportEmail,
           ),
         ],
       ),

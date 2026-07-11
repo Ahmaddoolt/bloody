@@ -2,10 +2,13 @@ import 'package:bloody/core/constants/app_constants.dart';
 import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/theme/app_theme.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
+import 'package:bloody/core/widgets/location_picker_row.dart';
+import 'package:bloody/features/shared/centers_list/presentation/screens/location_picker_screen.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -13,6 +16,8 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   final String phone;
   final String? bloodType;
   final String? city;
+  final double? latitude;
+  final double? longitude;
   final String? birthDate;
   final String? bloodRequestReason;
 
@@ -22,6 +27,8 @@ class EditProfileScreen extends ConsumerStatefulWidget {
     required this.phone,
     this.bloodType,
     this.city,
+    this.latitude,
+    this.longitude,
     this.birthDate,
     this.bloodRequestReason,
   });
@@ -36,6 +43,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _bloodRequestReasonController = TextEditingController();
   String? _selectedBloodType;
   String? _selectedCity;
+  double? _selectedLat;
+  double? _selectedLng;
   DateTime? _selectedDate;
   bool _isLoading = false;
 
@@ -49,6 +58,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _bloodRequestReasonController.text = widget.bloodRequestReason ?? '';
     _selectedBloodType = widget.bloodType;
     _selectedCity = widget.city;
+    _selectedLat = widget.latitude;
+    _selectedLng = widget.longitude;
     if (widget.birthDate != null) {
       _selectedDate = DateTime.tryParse(widget.birthDate!);
     }
@@ -71,6 +82,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           phone: _phoneController.text.trim(),
           bloodType: _selectedBloodType,
           city: _selectedCity,
+          latitude: _selectedLat,
+          longitude: _selectedLng,
           birthDate: _selectedDate?.toIso8601String().split('T')[0],
         );
 
@@ -108,6 +121,29 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       lastDate: DateTime.now(),
     );
     if (picked != null) setState(() => _selectedDate = picked);
+  }
+
+  Future<void> _pickLocation() async {
+    final cityCoords = _selectedCity != null
+        ? AppCities.cityCoordinates[_selectedCity!]
+        : null;
+    final initialLocation = (_selectedLat != null && _selectedLng != null)
+        ? LatLng(_selectedLat!, _selectedLng!)
+        : (cityCoords != null ? LatLng(cityCoords[0], cityCoords[1]) : null);
+
+    final result = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(initialLocation: initialLocation),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _selectedLat = result.latitude;
+      _selectedLng = result.longitude;
+    });
   }
 
   @override
@@ -164,6 +200,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   .map((c) => DropdownMenuItem(value: c, child: Text(c.tr())))
                   .toList(),
               onChanged: (val) => setState(() => _selectedCity = val),
+            ),
+            const SizedBox(height: 16),
+            LocationPickerRow(
+              latitude: _selectedLat,
+              longitude: _selectedLng,
+              enabled: !_isLoading,
+              onTap: _isLoading ? null : _pickLocation,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(

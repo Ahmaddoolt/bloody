@@ -85,7 +85,8 @@ class _BloodStockTileState extends State<BloodStockTile>
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: isUrgent ? Border.all(color: AppTheme.primaryRed, width: 2) : null,
+        border:
+            isUrgent ? Border.all(color: AppTheme.primaryRed, width: 2) : null,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
@@ -113,7 +114,8 @@ class _BloodStockTileState extends State<BloodStockTile>
                       decoration: BoxDecoration(
                         color: bgColor,
                         shape: BoxShape.circle,
-                        border: Border.all(color: statusColor.withOpacity(0.5), width: 2),
+                        border: Border.all(
+                            color: statusColor.withOpacity(0.5), width: 2),
                         boxShadow: [
                           BoxShadow(
                             color: statusColor.withOpacity(0.2),
@@ -175,10 +177,10 @@ class _BloodStockTileState extends State<BloodStockTile>
                               child: LinearProgressIndicator(
                                 value: value,
                                 minHeight: 7,
-                                backgroundColor:
-                                    isDark ? Colors.grey[700] : Colors.grey[200],
-                                valueColor:
-                                    AlwaysStoppedAnimation(statusColor),
+                                backgroundColor: isDark
+                                    ? Colors.grey[700]
+                                    : Colors.grey[200],
+                                valueColor: AlwaysStoppedAnimation(statusColor),
                               ),
                             ),
                           ),
@@ -234,8 +236,8 @@ class _BloodStockTileState extends State<BloodStockTile>
                                 color: Colors.white, size: 16),
                             const SizedBox(width: 6),
                             Text(
-                              'urgently_needs'.tr(
-                                  args: [widget.neededQuantity.toString()]),
+                              'urgently_needs'
+                                  .tr(args: [widget.neededQuantity.toString()]),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,

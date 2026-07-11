@@ -11,6 +11,8 @@ class UpdateUserProfile {
     String? phone,
     String? bloodType,
     String? city,
+    double? latitude,
+    double? longitude,
     String? birthDate,
   }) {
     return _repository.updateProfile(
@@ -19,6 +21,8 @@ class UpdateUserProfile {
       phone: phone,
       bloodType: bloodType,
       city: city,
+      latitude: latitude,
+      longitude: longitude,
       birthDate: birthDate,
     );
   }

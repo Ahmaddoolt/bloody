@@ -8,6 +8,8 @@ abstract class SettingsRepository {
     String? phone,
     String? bloodType,
     String? city,
+    double? latitude,
+    double? longitude,
     String? birthDate,
   });
   Future<bool> toggleAvailability({

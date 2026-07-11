@@ -3,7 +3,6 @@ import 'package:bloody/core/theme/app_colors.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../../core/widgets/app_loading_indicator.dart';
 import '../../data/settings_service.dart';
@@ -150,7 +149,9 @@ class _DonationHistoryScreenState extends ConsumerState<DonationHistoryScreen> {
         ? DateFormat.yMd(context.locale.languageCode)
             .format(DateTime.parse(rawDate).toLocal())
         : 'n_a'.tr();
-    final String center = donation['centers']?['name'] ?? 'unknown_center'.tr();
+    final centerName = donation['centers']?['name']?.toString().trim();
+    final String center =
+        centerName?.isNotEmpty == true ? centerName! : 'direct_donation'.tr();
     final String status = donation['status'] ?? 'completed';
     final bool isCompleted = status == 'completed';
 
@@ -245,7 +246,7 @@ class _DonationHistoryScreenState extends ConsumerState<DonationHistoryScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    isCompleted ? 'completed'.tr() : 'pending'.tr(),
+                    _statusLabel(status),
                     style: TextStyle(
                       color: statusColor,
                       fontSize: 12,
@@ -259,5 +260,13 @@ class _DonationHistoryScreenState extends ConsumerState<DonationHistoryScreen> {
         ),
       ),
     );
+  }
+
+  String _statusLabel(String status) {
+    return switch (status) {
+      'completed' => 'completed'.tr(),
+      'pending' => 'pending'.tr(),
+      _ => 'unknown'.tr(),
+    };
   }
 }

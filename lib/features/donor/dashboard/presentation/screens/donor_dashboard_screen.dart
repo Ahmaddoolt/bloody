@@ -15,6 +15,7 @@ import '../providers/donor_dashboard_provider.dart';
 import '../providers/donor_profile_provider.dart';
 import '../providers/receiver_list_provider.dart';
 import '../widgets/deferral_view.dart';
+import '../widgets/receiver_detail_sheet.dart';
 import '../widgets/receiver_list.dart';
 
 class DonorHomeScreen extends ConsumerStatefulWidget {
@@ -167,6 +168,14 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
     if (await canLaunchUrl(uri)) launchUrl(uri);
   }
 
+  void _showReceiverDetails(Map<String, dynamic> receiver) {
+    showReceiverDetailSheet(
+      context,
+      receiver: receiver,
+      onCall: () => _makeCall(receiver['phone']?.toString()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final deferralState = ref.watch(deferralTimerProvider);
@@ -228,6 +237,7 @@ class _DonorHomeScreenState extends ConsumerState<DonorHomeScreen>
                   scrollController: _scrollController,
                   onRefresh: _loadProfileAndReceivers,
                   onCall: _makeCall,
+                  onOpenReceiver: _showReceiverDetails,
                 ),
           floatingActionButton: MapToggleFab(
             isMapView: ref.watch(isMapViewProvider),

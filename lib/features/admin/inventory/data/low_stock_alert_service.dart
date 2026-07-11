@@ -25,6 +25,7 @@ class LowStockAlertService {
 
       final donors = await _fetchEligibleDonors(compatibleTypes);
 
+
       if (donors.isEmpty) {
         debugPrint(
             '[LowStockAlertService] No eligible donors found for $bloodType');
@@ -71,44 +72,13 @@ class LowStockAlertService {
       debugPrint(
           '[LowStockAlertService] Inserted ${notifications.length} notifications to database');
 
-      // Use default Arabic for FCM (server will handle individual localization if needed)
-      final notification = NotificationTemplates.getNotification(
-        'low_stock',
-        'ar',
-        params: {
-          'blood_type': bloodType,
-          'center': centerName,
-        },
+      // FCM push is best-effort — DB notifications are the primary delivery mechanism
+      _sendFcmPush(
+        donorIds: donorIds,
+        bloodType: bloodType,
+        centerName: centerName,
+        centerId: centerId,
       );
-      final title = notification['title']!;
-      final body = notification['body']!;
-
-      try {
-        final response = await _supabase.functions.invoke(
-          'notify-donors',
-          body: {
-            'donorIds': donorIds,
-            'title': title,
-            'body': body,
-            'type': 'low_stock_alert',
-            'center_id': centerId,
-            'blood_type': bloodType,
-          },
-        );
-
-        final sentCount = _extractSentCount(response.data);
-        if (sentCount == 0) {
-          debugPrint(
-              '[LowStockAlertService] notify-donors returned 0 successful sends for $bloodType. Response: ${response.data}');
-          return false;
-        }
-
-        debugPrint(
-            '[LowStockAlertService] Sent FCM to $sentCount of ${donorIds.length} eligible donors via notify-donors');
-      } catch (e) {
-        debugPrint('[LowStockAlertService] Error calling notify-donors: $e');
-        return false;
-      }
 
       return true;
     } catch (e, st) {
@@ -116,6 +86,35 @@ class LowStockAlertService {
       debugPrint('[LowStockAlertService] StackTrace: $st');
       return false;
     }
+  }
+
+  void _sendFcmPush({
+    required List<String> donorIds,
+    required String bloodType,
+    required String centerName,
+    required String centerId,
+  }) {
+    final notification = NotificationTemplates.getNotification(
+      'low_stock',
+      'ar',
+      params: {'blood_type': bloodType, 'center': centerName},
+    );
+    _supabase.functions
+        .invoke(
+          'notify-donors',
+          body: {
+            'donorIds': donorIds,
+            'title': notification['title'],
+            'body': notification['body'],
+            'type': 'low_stock_alert',
+            'center_id': centerId,
+            'blood_type': bloodType,
+          },
+        )
+        .then((res) => debugPrint(
+            '[LowStockAlertService] FCM sent: ${_extractSentCount(res.data)} recipients'))
+        .catchError((e) =>
+            debugPrint('[LowStockAlertService] FCM warning (non-critical): $e'));
   }
 
   int _extractSentCount(dynamic responseData) {
@@ -135,8 +134,9 @@ class LowStockAlertService {
       List<String> types) async {
     final response = await _supabase
         .from('profiles')
-        .select('id, blood_type, last_donation_date')
+        .select('id, blood_type, last_donation_date, language')
         .eq('user_type', 'donor')
+        .eq('is_forbidden', false)
         .eq('is_available', true)
         .inFilter('blood_type', types);
 

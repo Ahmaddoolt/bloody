@@ -36,6 +36,8 @@ class ProfileNotifier extends StateNotifier<AsyncValue<UserProfileEntity?>> {
     String? phone,
     String? bloodType,
     String? city,
+    double? latitude,
+    double? longitude,
     String? birthDate,
   }) async {
     try {
@@ -45,6 +47,8 @@ class ProfileNotifier extends StateNotifier<AsyncValue<UserProfileEntity?>> {
         phone: phone,
         bloodType: bloodType,
         city: city,
+        latitude: latitude,
+        longitude: longitude,
         birthDate: birthDate,
       );
 
@@ -56,6 +60,8 @@ class ProfileNotifier extends StateNotifier<AsyncValue<UserProfileEntity?>> {
             phone: phone ?? currentProfile.phone,
             bloodType: bloodType ?? currentProfile.bloodType,
             city: city ?? currentProfile.city,
+            latitude: latitude ?? currentProfile.latitude,
+            longitude: longitude ?? currentProfile.longitude,
             birthDate: birthDate ?? currentProfile.birthDate,
           ));
         }

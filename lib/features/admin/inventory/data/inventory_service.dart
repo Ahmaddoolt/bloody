@@ -11,7 +11,10 @@ class InventoryService {
   /// Fetches the inventory from the database
   Future<List<Map<String, dynamic>>> getCenterInventory(String centerId) async {
     AppLogger.info("Fetching inventory for Center ID: $centerId");
-    final data = await _supabase.from('center_inventory').select().eq('center_id', centerId);
+    final data = await _supabase
+        .from('center_inventory')
+        .select()
+        .eq('center_id', centerId);
     return List<Map<String, dynamic>>.from(data);
   }
 
@@ -42,7 +45,8 @@ class InventoryService {
 
     // 2. Feature 4: Trigger Low Stock Alert
     if (quantity < LowStockAlertService.lowStockThreshold) {
-      AppLogger.warning("Stock low ($quantity) for $bloodType. Triggering alert...");
+      AppLogger.warning(
+          "Stock low ($quantity) for $bloodType. Triggering alert...");
 
       final alertSent = await _alertService.sendLowStockAlert(
         centerId: centerId,

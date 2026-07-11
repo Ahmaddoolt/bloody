@@ -124,6 +124,7 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
             .from('profiles')
             .select()
             .eq('user_type', 'donor')
+            .eq('is_forbidden', false)
             .count();
         totalCount = countResult.count;
       }
@@ -189,6 +190,7 @@ final currentUserRankProvider = FutureProvider<int?>((ref) async {
         .from('profiles')
         .select()
         .eq('user_type', 'donor')
+        .eq('is_forbidden', false)
         .gt('points', userPoints)
         .count();
 

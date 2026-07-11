@@ -14,7 +14,8 @@ class MapFinderService {
       try {
         return await _supabase
             .from('profiles')
-            .select('blood_type, city, username, blood_request_reason')
+            .select(
+                'blood_type, city, username, blood_request_reason, last_confirmation_at')
             .eq('id', userId)
             .maybeSingle();
       } on PostgrestException catch (error) {
@@ -50,6 +51,7 @@ class MapFinderService {
           .from('profiles')
           .select()
           .eq('user_type', 'donor')
+          .eq('is_forbidden', false)
           .eq('is_available', true); // ✅ only available donors
 
       if (!isUniversalReceiver) {
@@ -90,39 +92,27 @@ class MapFinderService {
     }
   }
 
-  Future<bool> confirmDonation(String donorId) async {
+  Future<DateTime?> confirmDonation(String donorId) async {
     AppLogger.info("Confirming donation from Donor ID: $donorId");
     try {
-      final today = DateTime.now().toIso8601String().split('T')[0];
+      final response = await _supabase.rpc(
+        'confirm_receiver_donation',
+        params: {'p_donor_id': donorId},
+      );
 
-      // 1. Get current points (safe query — no optional columns)
-      final data = await _supabase
-          .from('profiles')
-          .select('points')
-          .eq('id', donorId)
-          .single();
-      final currentPoints = (data['points'] as num?)?.toInt() ?? 0;
-
-      // 2. Update points + last_donation_date
-      await _supabase.from('profiles').update({
-        'points': currentPoints + 10,
-        'last_donation_date': today,
-      }).eq('id', donorId);
-
-      // 3. Log donation
-      await _supabase
-          .from('donations')
-          .insert({'donor_id': donorId, 'status': 'completed'});
+      final confirmedAt = DateTime.tryParse(response.toString());
+      if (confirmedAt == null) {
+        throw StateError('Invalid confirmation timestamp: $response');
+      }
 
       AppLogger.success("Donation confirmed.");
 
-      // 4. Send notification (separate — must not break donation)
       _notifyDonorAboutConfirmation(donorId);
 
-      return true;
+      return confirmedAt;
     } catch (e, stack) {
       AppLogger.error("MapFinderService.confirmDonation", e, stack);
-      return false;
+      return null;
     }
   }
 
@@ -152,9 +142,7 @@ class MapFinderService {
         'notify-donors',
         body: {
           if (fcmToken != null && fcmToken.isNotEmpty) 'tokens': [fcmToken],
-          'title': isArabic
-              ? '🩸 شكراً لك، بطل!'
-              : '🩸 Thank you, hero!',
+          'title': isArabic ? '🩸 شكراً لك، بطل!' : '🩸 Thank you, hero!',
           'body': isArabic
               ? 'تم تأكيد تبرعك بالدم! لقد أنقذت حياة. ستدخل الآن في فترة تعافي مدتها 90 يوماً. استرح وحافظ على صحتك.'
               : 'Your blood donation has been confirmed! You saved a life. You are now entering a 90-day recovery period. Rest up and stay healthy.',

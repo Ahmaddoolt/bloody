@@ -43,6 +43,28 @@ class _DonorRulesDialog extends StatelessWidget {
             _RuleItem(text: 'rule_tattoos'.tr()),
             _RuleItem(text: 'rule_health'.tr()),
             _RuleItem(text: 'rule_travel'.tr()),
+            SizedBox(height: AppSpacing.md),
+            Text(
+              'donor_testing_tests_title'.tr(),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: AppSpacing.sm),
+            _RuleItem(text: 'test_cbc'.tr()),
+            _RuleItem(text: 'test_blood_group'.tr()),
+            _RuleItem(text: 'test_hiv'.tr()),
+            _RuleItem(text: 'test_hepatitis_b'.tr()),
+            _RuleItem(text: 'test_hepatitis_c'.tr()),
+            _RuleItem(text: 'test_syphilis'.tr()),
+            SizedBox(height: AppSpacing.sm),
+            Text(
+              'donor_testing_note'.tr(),
+              style: TextStyle(
+                color:
+                    Theme.of(context).colorScheme.onSurface.withOpacity(0.58),
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
           ],
         ),
       ),
@@ -70,7 +92,8 @@ class _RuleItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
+    final textColor =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),

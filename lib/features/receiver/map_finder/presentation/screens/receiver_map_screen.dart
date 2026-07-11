@@ -60,6 +60,17 @@ class _ReceiverHomeScreenState extends ConsumerState<ReceiverHomeScreen> {
   }
 
   Future<void> _confirmDonation(String donorId, String donorName) async {
+    final mapState = ref.read(receiverMapProvider);
+    if (mapState.isOnConfirmationCooldown) {
+      _showSnack(
+        'confirmation_on_cooldown'.tr(
+          args: [mapState.confirmationCooldownFormatted],
+        ),
+        Colors.orange,
+      );
+      return;
+    }
+
     final shouldConfirm = await AppConfirmDialog.show(
       context: context,
       title: 'confirm_donation'.tr(),
@@ -97,6 +108,8 @@ class _ReceiverHomeScreenState extends ConsumerState<ReceiverHomeScreen> {
             user: user,
             isDark: isDark,
             isConfirmingDonation: state.isConfirmingDonation,
+            isOnCooldown: state.isOnConfirmationCooldown,
+            cooldownRemaining: state.confirmationCooldownFormatted,
             onCall: () => _callUser(user['phone'] as String?),
             onConfirmDonation: () => _confirmDonation(
               user['id'] as String,

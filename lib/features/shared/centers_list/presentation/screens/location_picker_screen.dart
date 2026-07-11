@@ -24,7 +24,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   void initState() {
     super.initState();
     // Default to Damascus if no location provided
-    _currentSelection = widget.initialLocation ?? const LatLng(33.5138, 36.2765);
+    _currentSelection =
+        widget.initialLocation ?? const LatLng(33.5138, 36.2765);
     _determineStartLocation();
   }
 
@@ -43,7 +44,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             Position position = await Geolocator.getCurrentPosition();
             if (mounted) {
               setState(() {
-                _currentSelection = LatLng(position.latitude, position.longitude);
+                _currentSelection =
+                    LatLng(position.latitude, position.longitude);
                 _moveCamera(_currentSelection);
               });
             }
@@ -116,7 +118,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.1),
@@ -129,7 +132,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 children: [
                   Text(
                     "move_map_to_select".tr(),
-                    style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -146,7 +151,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                       ),
                       child: Text(
                         "confirm".tr(),
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),

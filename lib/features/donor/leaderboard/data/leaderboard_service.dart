@@ -14,6 +14,7 @@ class LeaderboardService {
           .from('profiles')
           .select()
           .eq('user_type', 'donor')
+          .eq('is_forbidden', false)
           .order('points', ascending: false)
           .range(offset, offset + limit - 1);
 

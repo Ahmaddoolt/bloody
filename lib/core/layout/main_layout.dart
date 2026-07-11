@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/donor/dashboard/presentation/screens/donor_dashboard_screen.dart';
 import '../../features/donor/leaderboard/presentation/screens/leaderboard_screen.dart';
-// ✅ NEW CLEAN ARCHITECTURE IMPORTS
 import '../../features/receiver/map_finder/presentation/screens/receiver_map_screen.dart';
+import '../../features/shared/ai_chat/presentation/screens/blood_ai_chat_screen.dart';
 import '../../features/shared/centers_list/presentation/screens/centers_screen.dart';
 import '../../features/shared/settings/presentation/screens/settings_screen.dart';
 import '../providers/navigation_provider.dart';
@@ -34,6 +34,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
           ? const DonorHomeScreen()
           : const ReceiverHomeScreen(),
       const CentersScreen(),
+      const BloodAiChatScreen(),
       const LeaderboardScreen(),
       const SettingsScreen(),
     ];
@@ -53,7 +54,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
           color: colors.surface,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -65,25 +66,34 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(
-                  index: 0,
-                  icon: Icons.home_rounded,
-                  label: 'home'.tr(),
+                Expanded(
+                  child: _buildNavItem(
+                    index: 0,
+                    icon: Icons.home_rounded,
+                    label: 'home'.tr(),
+                  ),
                 ),
-                _buildNavItem(
-                  index: 1,
-                  icon: Icons.local_hospital_rounded,
-                  label: 'centers'.tr(),
+                Expanded(
+                  child: _buildNavItem(
+                    index: 1,
+                    icon: Icons.local_hospital_rounded,
+                    label: 'centers'.tr(),
+                  ),
                 ),
-                _buildNavItem(
-                  index: 2,
-                  icon: Icons.emoji_events_rounded,
-                  label: 'legends'.tr(),
+                Expanded(child: _buildAiNavItem()),
+                Expanded(
+                  child: _buildNavItem(
+                    index: 3,
+                    icon: Icons.emoji_events_rounded,
+                    label: 'legends'.tr(),
+                  ),
                 ),
-                _buildNavItem(
-                  index: 3,
-                  icon: Icons.settings_rounded,
-                  label: 'settings'.tr(),
+                Expanded(
+                  child: _buildNavItem(
+                    index: 4,
+                    icon: Icons.settings_rounded,
+                    label: 'settings'.tr(),
+                  ),
                 ),
               ],
             ),
@@ -110,10 +120,10 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.accent.withOpacity(0.1)
+              ? AppColors.accent.withValues(alpha: 0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
@@ -125,21 +135,80 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
               size: 24,
               color: isSelected
                   ? AppColors.accent
-                  : colors.onSurface.withOpacity(0.5),
+                  : colors.onSurface.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 4),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected
                     ? AppColors.accent
-                    : colors.onSurface.withOpacity(0.5),
+                    : colors.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAiNavItem() {
+    final currentIndex = ref.watch(navigationIndexProvider);
+    final isSelected = currentIndex == 2;
+    final colors = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: () {
+        ref.read(navigationIndexProvider.notifier).state = 2;
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.accentDark, AppColors.accent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.accent
+                      .withValues(alpha: isSelected ? 0.34 : 0.22),
+                  blurRadius: isSelected ? 18 : 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.health_and_safety_rounded,
+              color: Colors.white,
+              size: 25,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'ai_chat_tab'.tr(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              color: isSelected
+                  ? AppColors.accent
+                  : colors.onSurface.withValues(alpha: 0.55),
+            ),
+          ),
+        ],
       ),
     );
   }

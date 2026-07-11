@@ -16,6 +16,8 @@ abstract class AuthRepository {
     required String bloodType,
     required String city,
     required DateTime birthDate,
+    double? latitude,
+    double? longitude,
   });
 
   Future<void> signOut();
