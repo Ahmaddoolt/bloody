@@ -6,6 +6,10 @@
 
 ### *Connecting Blood Donors with Those Who Need It Most*
 
+> **Portfolio case study:** [akoding.dev](https://akoding.dev/#projects) · **Status:** personal open-source Flutter project.
+>
+> This repository is intended as a code sample. Configure your own Supabase, Firebase, and Google Maps credentials before running it; never commit production credentials.
+
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.0+-0175C2?logo=dart&logoColor=white)](https://dart.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
