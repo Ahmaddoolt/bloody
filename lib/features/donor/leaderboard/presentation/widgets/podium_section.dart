@@ -142,7 +142,8 @@ class _PodiumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final rawName = donor['username'] ?? donor['email'];
-    final name = (rawName != null && !rawName.toString().toLowerCase().contains('unknown'))
+    final name = (rawName != null &&
+            !rawName.toString().toLowerCase().contains('unknown'))
         ? (rawName as String).split('@')[0]
         : 'donor'.tr();
     final bloodType = donor['blood_type'] ?? '?';
@@ -216,12 +217,14 @@ class _PodiumCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF2E7D32).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF2E7D32).withOpacity(0.3)),
+              border:
+                  Border.all(color: const Color(0xFF2E7D32).withOpacity(0.3)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.bolt_rounded, size: 12, color: Color(0xFF2E7D32)),
+                const Icon(Icons.bolt_rounded,
+                    size: 12, color: Color(0xFF2E7D32)),
                 Text(
                   '$points',
                   style: const TextStyle(
@@ -250,7 +253,8 @@ class _PodiumCard extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(6)),
               border: Border(
                 top: BorderSide(color: rankColor.withOpacity(0.4)),
                 left: BorderSide(color: rankColor.withOpacity(0.4)),

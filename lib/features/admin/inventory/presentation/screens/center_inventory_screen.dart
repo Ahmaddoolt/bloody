@@ -4,6 +4,8 @@ import 'package:bloody/core/theme/app_theme.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
 import 'package:bloody/features/admin/inventory/domain/entities/inventory_entity.dart';
 import 'package:bloody/features/admin/inventory/presentation/providers/inventory_provider.dart';
+import 'package:bloody/features/admin/inventory/presentation/providers/managed_center_provider.dart';
+import 'package:bloody/features/shared/centers_list/presentation/widgets/admin_center_dialog.dart';
 import 'package:bloody/features/shared/centers_list/presentation/widgets/blood_stock_tile.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -315,16 +317,39 @@ class _CenterInventoryScreenState extends ConsumerState<CenterInventoryScreen> {
     );
   }
 
+  void _openEditCenterDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AdminCenterDialog(
+        center: widget.center,
+        hideManagerField: true,
+        onSuccess: () {
+          ref.invalidate(managedCenterProvider);
+          ref
+              .read(inventoryProvider.notifier)
+              .fetchInventory(widget.center['id'].toString());
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(inventoryProvider);
-    final centerName = widget.center['name'] ?? 'Blood Center';
+    final centerName = widget.center['name']?.toString() ?? 'Blood Center';
 
     return Scaffold(
       appBar: AppBar(
         title: Text(centerName),
         backgroundColor: AppColors.accent,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: _openEditCenterDialog,
+            icon: const Icon(Icons.edit_rounded, size: 20),
+            tooltip: 'edit_info'.tr(),
+          ),
+        ],
       ),
       body: state.isLoading
           ? const AppLoadingCenter()

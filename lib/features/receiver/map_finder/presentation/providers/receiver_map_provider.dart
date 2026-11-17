@@ -67,6 +67,7 @@ class ReceiverMapState {
   final String? neededBloodType;
   final String? city;
   final String? bloodRequestReason;
+  final DateTime? lastConfirmationAt;
 
   const ReceiverMapState({
     this.isMapView = false,
@@ -84,7 +85,29 @@ class ReceiverMapState {
     this.neededBloodType,
     this.city,
     this.bloodRequestReason,
+    this.lastConfirmationAt,
   });
+
+  bool get isOnConfirmationCooldown {
+    if (lastConfirmationAt == null) return false;
+    return DateTime.now().difference(lastConfirmationAt!) <
+        const Duration(hours: 24);
+  }
+
+  Duration get _confirmationCooldownRemaining {
+    if (!isOnConfirmationCooldown) return Duration.zero;
+    return lastConfirmationAt!
+        .add(const Duration(hours: 24))
+        .difference(DateTime.now());
+  }
+
+  String get confirmationCooldownFormatted {
+    final d = _confirmationCooldownRemaining;
+    if (d <= Duration.zero) return '';
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    return '${h}h ${m}m';
+  }
 
   ReceiverMapState copyWith({
     bool? isMapView,
@@ -102,6 +125,7 @@ class ReceiverMapState {
     String? neededBloodType,
     String? city,
     String? bloodRequestReason,
+    DateTime? lastConfirmationAt,
   }) {
     return ReceiverMapState(
       isMapView: isMapView ?? this.isMapView,
@@ -109,8 +133,7 @@ class ReceiverMapState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
       hasError: hasError ?? this.hasError,
-      isConfirmingDonation:
-          isConfirmingDonation ?? this.isConfirmingDonation,
+      isConfirmingDonation: isConfirmingDonation ?? this.isConfirmingDonation,
       donors: donors ?? this.donors,
       limit: limit ?? this.limit,
       offset: offset ?? this.offset,
@@ -120,6 +143,7 @@ class ReceiverMapState {
       neededBloodType: neededBloodType ?? this.neededBloodType,
       city: city ?? this.city,
       bloodRequestReason: bloodRequestReason ?? this.bloodRequestReason,
+      lastConfirmationAt: lastConfirmationAt ?? this.lastConfirmationAt,
     );
   }
 }
@@ -243,14 +267,17 @@ class ReceiverMapNotifier extends StateNotifier<ReceiverMapState> {
 
   Future<bool> confirmDonation(String donorId) async {
     if (state.isConfirmingDonation) return false;
+    if (state.isOnConfirmationCooldown) return false;
 
     state = state.copyWith(isConfirmingDonation: true);
     try {
-      final success = await _service.confirmDonation(donorId);
-      if (success) {
+      final confirmedAt = await _service.confirmDonation(donorId);
+      if (confirmedAt != null) {
+        state = state.copyWith(lastConfirmationAt: confirmedAt);
         await fetchDonors(loadMore: false);
+        return true;
       }
-      return success;
+      return false;
     } finally {
       state = state.copyWith(isConfirmingDonation: false);
     }
@@ -270,9 +297,13 @@ class ReceiverMapNotifier extends StateNotifier<ReceiverMapState> {
         return;
       }
 
-      final neededBloodType = _normalizeBloodType(profile['blood_type'] as String?);
+      final neededBloodType =
+          _normalizeBloodType(profile['blood_type'] as String?);
       final city = profile['city'] as String?;
       final bloodRequestReason = profile['blood_request_reason'] as String?;
+      final lastConfirmationAt = profile['last_confirmation_at'] != null
+          ? DateTime.tryParse(profile['last_confirmation_at'].toString())
+          : null;
 
       // Set city fallback for map if not yet set
       if (state.fallbackLatLng == null && city != null) {
@@ -282,12 +313,14 @@ class ReceiverMapNotifier extends StateNotifier<ReceiverMapState> {
           city: city,
           bloodRequestReason: bloodRequestReason,
           fallbackLatLng: cityLatLng,
+          lastConfirmationAt: lastConfirmationAt,
         );
       } else {
         state = state.copyWith(
           neededBloodType: neededBloodType,
           city: city,
           bloodRequestReason: bloodRequestReason,
+          lastConfirmationAt: lastConfirmationAt,
         );
       }
 
@@ -317,7 +350,8 @@ class ReceiverMapNotifier extends StateNotifier<ReceiverMapState> {
     if (loadMore && (state.isLoadingMore || !state.hasMore)) return;
 
     final currentOffset = loadMore ? state.offset : 0;
-    final existingDonors = loadMore ? state.donors : const <Map<String, dynamic>>[];
+    final existingDonors =
+        loadMore ? state.donors : const <Map<String, dynamic>>[];
 
     state = state.copyWith(
       donors: existingDonors,
@@ -338,9 +372,8 @@ class ReceiverMapNotifier extends StateNotifier<ReceiverMapState> {
         receiverLng: state.currentPosition?.longitude,
       );
 
-      final donors = loadMore
-          ? [...state.donors, ...fetchedDonors]
-          : fetchedDonors;
+      final donors =
+          loadMore ? [...state.donors, ...fetchedDonors] : fetchedDonors;
 
       state = state.copyWith(
         donors: donors,

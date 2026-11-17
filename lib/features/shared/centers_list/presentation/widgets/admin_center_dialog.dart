@@ -15,7 +15,16 @@ class AdminCenterDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? center;
   final VoidCallback onSuccess;
 
-  const AdminCenterDialog({super.key, this.center, required this.onSuccess});
+  /// When `true`, hides the "assign manager" email field so a center manager
+  /// cannot reassign their own center. Defaults to `false` (super-admin view).
+  final bool hideManagerField;
+
+  const AdminCenterDialog({
+    super.key,
+    this.center,
+    required this.onSuccess,
+    this.hideManagerField = false,
+  });
 
   @override
   ConsumerState<AdminCenterDialog> createState() => _AdminCenterDialogState();
@@ -325,22 +334,24 @@ class _AdminCenterDialogState extends ConsumerState<AdminCenterDialog> {
 
                 const SizedBox(height: 20),
 
-                // ── Section: Manager ──────────────────
-                _SectionLabel(
-                    label: 'assign_manager_optional'.tr(), isDark: isDark),
-                const SizedBox(height: 10),
-                _buildField(
-                  context,
-                  controller: _emailCtrl,
-                  label: 'manager_email'.tr(),
-                  icon: Icons.security_rounded,
-                  isDark: isDark,
-                  iconColor: Colors.orange,
-                  keyboardType: TextInputType.emailAddress,
-                  helperText: 'user_must_sign_up'.tr(),
-                ),
-
-                const SizedBox(height: 28),
+                // ── Section: Manager (super-admin only) ───────────────
+                if (!widget.hideManagerField) ...[
+                  _SectionLabel(
+                      label: 'assign_manager_optional'.tr(), isDark: isDark),
+                  const SizedBox(height: 10),
+                  _buildField(
+                    context,
+                    controller: _emailCtrl,
+                    label: 'manager_email'.tr(),
+                    icon: Icons.security_rounded,
+                    isDark: isDark,
+                    iconColor: Colors.orange,
+                    keyboardType: TextInputType.emailAddress,
+                    helperText: 'user_must_sign_up'.tr(),
+                  ),
+                  const SizedBox(height: 28),
+                ] else
+                  const SizedBox(height: 28),
 
                 // ── Actions ────────────────────────────
                 Row(

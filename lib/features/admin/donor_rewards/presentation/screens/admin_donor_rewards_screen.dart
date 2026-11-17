@@ -53,6 +53,7 @@ class _DonorRewardsNotifier extends StateNotifier<_DonorRewardsState> {
           .from('profiles')
           .select('id, username, blood_type, city, points, phone, fcm_token')
           .eq('user_type', 'donor')
+          .eq('is_forbidden', false)
           .gt('points', 0)
           .order('points', ascending: false);
       state = state.copyWith(

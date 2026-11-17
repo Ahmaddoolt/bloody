@@ -18,10 +18,10 @@ class SortingUtils {
 
   /// Smart Needy Sort Algorithm (For Donors looking for Receivers)
   /// Hierarchy:
-  /// 1. High Priority (is_priority = true)
-  /// 2. Matches User's Blood Type (Compatible)
-  /// 3. Same City
-  /// 4. Nearest Geolocation Distance
+  /// 1. Has situation/description (blood_request_reason not empty)
+  /// 2. High priority (priority_status = high, or legacy is_priority = true)
+  /// 3. Nearest geolocation distance
+  /// 4. Exact blood type match as a final tiebreaker
   static void sortNeedyUsers(
     List<Map<String, dynamic>> users, {
     required String? donorBloodType,
@@ -30,55 +30,31 @@ class SortingUtils {
     required double? donorLng,
   }) {
     users.sort((a, b) {
-      // 1. High Priority
-      final bool aPriority = a['is_priority'] ?? false;
-      final bool bPriority = b['is_priority'] ?? false;
-      if (aPriority != bPriority) {
-        return aPriority ? -1 : 1; // Priority comes first
-      }
+      final aHasDesc = _hasBloodRequestReason(a);
+      final bHasDesc = _hasBloodRequestReason(b);
+      if (aHasDesc != bHasDesc) return aHasDesc ? -1 : 1;
 
-      // 2. Matches User's Blood Type (Compatibility)
+      final aPriority = _isHighPriorityReceiver(a);
+      final bPriority = _isHighPriorityReceiver(b);
+      if (aPriority != bPriority) return aPriority ? -1 : 1;
+
+      final distanceComparison = _compareDistance(
+        a,
+        b,
+        originLat: donorLat,
+        originLng: donorLng,
+      );
+      if (distanceComparison != 0) return distanceComparison;
+
       if (donorBloodType != null) {
-        final aType = a['blood_type'];
-        final bType = b['blood_type'];
-        final compatibleList =
-            BloodUtils.getCompatibleReceivers(donorBloodType);
-
-        final aCompatible = compatibleList.contains(aType);
-        final bCompatible = compatibleList.contains(bType);
-
-        if (aCompatible != bCompatible) {
-          return aCompatible ? -1 : 1; // Compatible comes first
-        }
+        final aExact = a['blood_type'] == donorBloodType;
+        final bExact = b['blood_type'] == donorBloodType;
+        if (aExact != bExact) return aExact ? -1 : 1;
       }
 
-      // 3. Same City
-      if (donorCity != null) {
-        final aCity = a['city'];
-        final bCity = b['city'];
-
-        // Handle null cities gracefully
-        final bool aSame = (aCity != null && aCity == donorCity);
-        final bool bSame = (bCity != null && bCity == donorCity);
-
-        if (aSame != bSame) {
-          return aSame ? -1 : 1; // Same city comes first
-        }
-      }
-
-      // 4. Nearest Geolocation Distance
-      if (donorLat != null && donorLng != null) {
-        final double? aLat = a['latitude'];
-        final double? aLng = a['longitude'];
-        final double? bLat = b['latitude'];
-        final double? bLng = b['longitude'];
-
-        if (aLat != null && aLng != null && bLat != null && bLng != null) {
-          final distA = calculateDistance(donorLat, donorLng, aLat, aLng);
-          final distB = calculateDistance(donorLat, donorLng, bLat, bLng);
-          return distA.compareTo(distB); // Smaller distance first
-        }
-      }
+      final aName = a['username']?.toString() ?? '';
+      final bName = b['username']?.toString() ?? '';
+      if (aName != bName) return aName.compareTo(bName);
 
       return 0;
     });
@@ -121,13 +97,14 @@ class SortingUtils {
       final name = user['username'] ?? user['email'] ?? 'Unknown';
       final bloodType = user['blood_type'] ?? '?';
       final city = user['city'] ?? 'N/A';
-      final isPriority = user['is_priority'] ?? false;
+      final isPriority = _isHighPriorityReceiver(user);
+      final hasSituation = _hasBloodRequestReason(user);
 
       // Calculate distance if coordinates available
       String distanceStr = 'N/A';
       if (donorLat != null && donorLng != null) {
-        final double? userLat = user['latitude'];
-        final double? userLng = user['longitude'];
+        final userLat = (user['latitude'] as num?)?.toDouble();
+        final userLng = (user['longitude'] as num?)?.toDouble();
         if (userLat != null && userLng != null) {
           final dist = calculateDistance(donorLat, donorLng, userLat, userLng);
           distanceStr = '${dist.toStringAsFixed(1)} km';
@@ -152,6 +129,7 @@ class SortingUtils {
 
       // Priority indicator
       String priorityBadge = isPriority ? '⭐ PRIORITY' : '  ';
+      if (hasSituation) priorityBadge = '$priorityBadge SITUATION';
 
       buffer.writeln('║  ${(i + 1).toString().padLeft(2)}. $priorityBadge');
       buffer.writeln('║      Name: $name');
@@ -167,13 +145,52 @@ class SortingUtils {
     debugPrint(buffer.toString());
   }
 
+  static bool _hasBloodRequestReason(Map<String, dynamic> user) {
+    return user['blood_request_reason']?.toString().trim().isNotEmpty == true;
+  }
+
+  static bool _isHighPriorityReceiver(Map<String, dynamic> user) {
+    return user['priority_status'] == 'high' || user['is_priority'] == true;
+  }
+
+  static int _compareDistance(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b, {
+    required double? originLat,
+    required double? originLng,
+  }) {
+    if (originLat == null || originLng == null) return 0;
+
+    final aDistance = _distanceFrom(originLat, originLng, a);
+    final bDistance = _distanceFrom(originLat, originLng, b);
+
+    if (aDistance == null && bDistance == null) return 0;
+    if (aDistance == null) return 1;
+    if (bDistance == null) return -1;
+
+    return aDistance.compareTo(bDistance);
+  }
+
+  static double? _distanceFrom(
+    double originLat,
+    double originLng,
+    Map<String, dynamic> user,
+  ) {
+    final lat = (user['latitude'] as num?)?.toDouble();
+    final lng = (user['longitude'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+
+    return calculateDistance(originLat, originLng, lat, lng);
+  }
+
   /// Smart Donor Sort Algorithm (For Receivers looking for Donors)
   /// Hierarchy:
   /// 1. Same City (most relevant — local help first)
-  /// 2. Exact blood type match
-  /// 3. Other compatible blood types
-  /// 4. Nearest Geolocation Distance
-  /// 5. Highest Points (tiebreaker)
+  /// 2. Verified account
+  /// 3. Exact blood type match
+  /// 4. Other compatible blood types
+  /// 5. Nearest Geolocation Distance
+  /// 6. Highest Points (tiebreaker)
   static void sortDonors(
     List<Map<String, dynamic>> donors, {
     required String? receiverBloodType,
@@ -189,7 +206,12 @@ class SortingUtils {
         if (aSame != bSame) return aSame ? -1 : 1;
       }
 
-      // 2. Exact blood type first, then other compatible types
+      // 2. Verified donors are more trustworthy inside the local pool.
+      final bool aVerified = a['verification_status'] == 'verified';
+      final bool bVerified = b['verification_status'] == 'verified';
+      if (aVerified != bVerified) return aVerified ? -1 : 1;
+
+      // 3. Exact blood type first, then other compatible types
       if (receiverBloodType != null) {
         final aType = a['blood_type'];
         final bType = b['blood_type'];
@@ -197,13 +219,14 @@ class SortingUtils {
         final bExact = bType == receiverBloodType;
         if (aExact != bExact) return aExact ? -1 : 1;
 
-        final compatibleList = BloodUtils.getCompatibleDonors(receiverBloodType);
+        final compatibleList =
+            BloodUtils.getCompatibleDonors(receiverBloodType);
         final aCompatible = compatibleList.contains(aType);
         final bCompatible = compatibleList.contains(bType);
         if (aCompatible != bCompatible) return aCompatible ? -1 : 1;
       }
 
-      // 3. Nearest Geolocation Distance
+      // 4. Nearest Geolocation Distance
       if (receiverLat != null && receiverLng != null) {
         final double? aLat = (a['latitude'] as num?)?.toDouble();
         final double? aLng = (a['longitude'] as num?)?.toDouble();
@@ -217,7 +240,7 @@ class SortingUtils {
         }
       }
 
-      // 4. Highest Gamification Points (tiebreaker)
+      // 5. Highest Gamification Points (tiebreaker)
       final int pointsA = (a['points'] as num?)?.toInt() ?? 0;
       final int pointsB = (b['points'] as num?)?.toInt() ?? 0;
       return pointsB.compareTo(pointsA);

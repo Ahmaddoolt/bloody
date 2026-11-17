@@ -85,13 +85,23 @@ class AuthGate extends ConsumerStatefulWidget {
 class _AuthGateState extends ConsumerState<AuthGate> {
   bool _fcmInitialized = false;
   bool _hasCompletedInitialLoad = false;
+  bool _splashDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ensure splash is visible for at least 2 s on every cold launch
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _splashDone = true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
 
-    // Only show splash on initial app load, not during sign in/out operations
-    if (authState.isLoading && !_hasCompletedInitialLoad) {
+    // Show splash until the 2 s minimum has passed AND the auth check is done
+    if (!_splashDone || (authState.isLoading && !_hasCompletedInitialLoad)) {
       return const SplashScreen();
     }
 

@@ -9,7 +9,11 @@ class SettingsService {
   Future<Map<String, dynamic>?> getProfile(String userId) async {
     AppLogger.info("Loading profile for user: $userId");
     try {
-      return await _supabase.from('profiles').select().eq('id', userId).single();
+      return await _supabase
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .single();
     } catch (e, stack) {
       AppLogger.error("SettingsService.getProfile", e, stack);
       return null;
@@ -62,7 +66,9 @@ class SettingsService {
   }) async {
     AppLogger.info("Toggling is_available=$isAvailable for $userId");
     try {
-      await _supabase.from('profiles').update({'is_available': isAvailable}).eq('id', userId);
+      await _supabase
+          .from('profiles')
+          .update({'is_available': isAvailable}).eq('id', userId);
       AppLogger.success("Availability updated → $isAvailable");
       return isAvailable;
     } catch (e, stack) {

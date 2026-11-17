@@ -79,6 +79,8 @@ class AuthNotifier extends StateNotifier<AuthStateEntity> {
     required String bloodType,
     required String city,
     required DateTime birthDate,
+    double? latitude,
+    double? longitude,
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
 
@@ -91,6 +93,8 @@ class AuthNotifier extends StateNotifier<AuthStateEntity> {
       bloodType: bloodType,
       city: city,
       birthDate: birthDate,
+      latitude: latitude,
+      longitude: longitude,
     );
 
     if (result.success) {

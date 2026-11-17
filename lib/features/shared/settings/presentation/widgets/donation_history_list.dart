@@ -53,9 +53,15 @@ class DonationHistoryList extends StatelessWidget {
     return Column(
       children: history.map((donation) {
         final String date = donation['created_at'] != null
-            ? DateTime.parse(donation['created_at']).toLocal().toString().split(' ')[0]
-            : 'N/A';
-        final String center = donation['centers']?['name'] ?? 'Unknown Center';
+            ? DateTime.parse(donation['created_at'])
+                .toLocal()
+                .toString()
+                .split(' ')[0]
+            : 'n_a'.tr();
+        final centerName = donation['centers']?['name']?.toString().trim();
+        final String center = centerName?.isNotEmpty == true
+            ? centerName!
+            : 'direct_donation'.tr();
         final String status = donation['status'] ?? 'completed';
 
         Color statusColor = Colors.green;
@@ -70,25 +76,40 @@ class DonationHistoryList extends StatelessWidget {
           elevation: 0,
           margin: const EdgeInsets.only(bottom: 10),
           color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
             leading: Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                  color: AppTheme.primaryRed.withOpacity(0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.volunteer_activism, color: AppTheme.primaryRed, size: 20),
+                  color: AppTheme.primaryRed.withOpacity(0.1),
+                  shape: BoxShape.circle),
+              child: const Icon(Icons.volunteer_activism,
+                  color: AppTheme.primaryRed, size: 20),
             ),
-            title: Text(center, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(date, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            title: Text(center,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(date,
+                style: TextStyle(color: Colors.grey[600], fontSize: 12)),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(8)),
-              child: Text(status, style: TextStyle(color: statusColor, fontSize: 12)),
+              decoration: BoxDecoration(
+                  color: statusBg, borderRadius: BorderRadius.circular(8)),
+              child: Text(_statusLabel(status),
+                  style: TextStyle(color: statusColor, fontSize: 12)),
             ),
           ),
         );
       }).toList(),
     );
+  }
+
+  String _statusLabel(String status) {
+    return switch (status) {
+      'completed' => 'completed'.tr(),
+      'pending' => 'pending'.tr(),
+      _ => 'unknown'.tr(),
+    };
   }
 }

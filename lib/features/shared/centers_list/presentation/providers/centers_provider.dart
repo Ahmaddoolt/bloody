@@ -148,9 +148,14 @@ class CentersNotifier extends StateNotifier<CentersState> {
           .toList();
 
       final hasMoreData = newCenters.length >= _limit;
+      final combinedCenters =
+          loadMore ? [...state.centers, ...newCenters] : newCenters;
+      final orderedCenters = isSuperAdmin
+          ? combinedCenters
+          : await _sortCentersByHighestNeed(combinedCenters);
 
       state = state.copyWith(
-        centers: loadMore ? [...state.centers, ...newCenters] : newCenters,
+        centers: orderedCenters,
         isLoading: false,
         isLoadingMore: false,
         hasMore: hasMoreData,
@@ -198,12 +203,9 @@ class CentersNotifier extends StateNotifier<CentersState> {
         }
       }
 
-      final sortedCenters = List<CenterModel>.from(state.centers);
-      sortedCenters.sort((a, b) {
-        final aTotal = stockTotals[a.id] ?? 0;
-        final bTotal = stockTotals[b.id] ?? 0;
-        return aTotal.compareTo(bTotal);
-      });
+      final sortedCenters = isSuperAdmin
+          ? _sortByLowestStock(stockTotals)
+          : await _sortCentersByHighestNeed(state.centers);
 
       // Print sorted centers for debugging
       SortingUtils.printSortedCenters(
@@ -227,6 +229,49 @@ class CentersNotifier extends StateNotifier<CentersState> {
   /// Reset sorting and refresh
   Future<void> resetSort() async {
     await fetchCenters(loadMore: false);
+  }
+
+  List<CenterModel> _sortByLowestStock(Map<String, int> stockTotals) {
+    final sortedCenters = List<CenterModel>.from(state.centers);
+    sortedCenters.sort((a, b) {
+      final aTotal = stockTotals[a.id] ?? 0;
+      final bTotal = stockTotals[b.id] ?? 0;
+      return aTotal.compareTo(bTotal);
+    });
+    return sortedCenters;
+  }
+
+  Future<List<CenterModel>> _sortCentersByHighestNeed(
+    List<CenterModel> centers,
+  ) async {
+    if (centers.isEmpty) return centers;
+
+    final inventoryResponse = await _supabase
+        .from('center_inventory')
+        .select('center_id, quantity, needed_quantity');
+
+    final needScores = <String, int>{};
+    final totalStock = <String, int>{};
+    for (final row in inventoryResponse as List<dynamic>) {
+      final centerId = row['center_id']?.toString() ?? '';
+      if (centerId.isEmpty) continue;
+
+      final quantity = (row['quantity'] as num?)?.toInt() ?? 0;
+      final needed = (row['needed_quantity'] as num?)?.toInt() ?? 0;
+      final shortage = (needed - quantity).clamp(0, 1 << 30).toInt();
+
+      needScores[centerId] = (needScores[centerId] ?? 0) + shortage;
+      totalStock[centerId] = (totalStock[centerId] ?? 0) + quantity;
+    }
+
+    final sortedCenters = List<CenterModel>.from(centers);
+    sortedCenters.sort((a, b) {
+      final needCompare =
+          (needScores[b.id] ?? 0).compareTo(needScores[a.id] ?? 0);
+      if (needCompare != 0) return needCompare;
+      return (totalStock[a.id] ?? 0).compareTo(totalStock[b.id] ?? 0);
+    });
+    return sortedCenters;
   }
 
   /// Delete a center

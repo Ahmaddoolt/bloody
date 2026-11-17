@@ -1,3 +1,5 @@
+const Object _unset = Object();
+
 class CenterEntity {
   final String id;
   final String name;
@@ -84,7 +86,7 @@ class AdminHomeState {
     bool? isSortingByStock,
     int? pendingPriorityCount,
     String? searchQuery,
-    String? selectedCity,
+    Object? selectedCity = _unset,
     String? error,
     bool clearError = false,
   }) {
@@ -97,7 +99,8 @@ class AdminHomeState {
       isSortingByStock: isSortingByStock ?? this.isSortingByStock,
       pendingPriorityCount: pendingPriorityCount ?? this.pendingPriorityCount,
       searchQuery: searchQuery ?? this.searchQuery,
-      selectedCity: selectedCity ?? this.selectedCity,
+      selectedCity:
+          selectedCity == _unset ? this.selectedCity : selectedCity as String?,
       error: clearError ? null : (error ?? this.error),
     );
   }

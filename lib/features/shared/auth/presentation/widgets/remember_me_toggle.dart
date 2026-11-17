@@ -16,7 +16,8 @@ class RememberMeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
+    final textColor =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7);
 
     return GestureDetector(
       onTap: () => onChanged(!value),

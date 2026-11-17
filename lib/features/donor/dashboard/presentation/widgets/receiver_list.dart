@@ -12,6 +12,7 @@ class ReceiverList extends StatelessWidget {
   final ScrollController scrollController;
   final VoidCallback onRefresh;
   final void Function(String? phone) onCall;
+  final ValueChanged<Map<String, dynamic>> onOpenReceiver;
 
   const ReceiverList({
     super.key,
@@ -21,6 +22,7 @@ class ReceiverList extends StatelessWidget {
     required this.scrollController,
     required this.onRefresh,
     required this.onCall,
+    required this.onOpenReceiver,
   });
 
   @override
@@ -46,6 +48,7 @@ class ReceiverList extends StatelessWidget {
           return ReceiverCard(
             userData: item,
             onCall: () => onCall(item['phone']),
+            onTap: () => onOpenReceiver(item),
           );
         },
       ),
@@ -194,7 +197,8 @@ class DonorErrorState extends StatelessWidget {
               label: Text('retry'.tr()),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
             ),
           ],

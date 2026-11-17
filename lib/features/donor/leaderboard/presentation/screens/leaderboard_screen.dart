@@ -41,7 +41,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 
   void _onScroll() {
     final state = ref.read(leaderboardProvider);
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       if (!state.isLoadingMore && state.hasMore) {
         ref.read(leaderboardProvider.notifier).loadMore();
       }
@@ -61,7 +62,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 
   void _showDonorBottomSheet(Map<String, dynamic> donor, int rank) {
     final rawName = donor['username'] ?? donor['email'];
-    final name = (rawName != null && !rawName.toString().toLowerCase().contains('unknown'))
+    final name = (rawName != null &&
+            !rawName.toString().toLowerCase().contains('unknown'))
         ? (rawName as String).split('@')[0]
         : 'donor'.tr();
     final bloodType = donor['blood_type'] ?? '?';
@@ -146,14 +148,16 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
           : state.donors.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  onRefresh: () async => ref.read(leaderboardProvider.notifier).refresh(),
+                  onRefresh: () async =>
+                      ref.read(leaderboardProvider.notifier).refresh(),
                   color: AppTheme.gold,
                   child: CustomScrollView(
                     controller: _scrollController,
                     slivers: [
                       PodiumSection(
                         leaders: state.donors.map((d) => d.toJson()).toList(),
-                        onTap: (donor, rank) => _showDonorBottomSheet(donor, rank),
+                        onTap: (donor, rank) =>
+                            _showDonorBottomSheet(donor, rank),
                       ),
                       _buildRankList(state),
                       if (state.hasMore)
@@ -163,7 +167,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                             child: CustomLoader(size: 28),
                           ),
                         ),
-                      SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
+                      SliverToBoxAdapter(
+                          child: SizedBox(height: AppSpacing.xl)),
                     ],
                   ),
                 ),
@@ -222,7 +227,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                     children: [
                       // Total donors badge
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
@@ -252,7 +258,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                       currentUserRankAsync.when(
                         data: (rank) => rank != null
                             ? Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(16),
@@ -306,7 +313,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
               color: AppTheme.gold.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.emoji_events_rounded, size: 40, color: AppTheme.gold),
+            child: const Icon(Icons.emoji_events_rounded,
+                size: 40, color: AppTheme.gold),
           ),
           SizedBox(height: AppSpacing.lg),
           Text(
@@ -327,7 +335,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     }
 
     return SliverPadding(
-      padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
+      padding:
+          EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (ctx, index) {

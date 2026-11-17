@@ -3,10 +3,12 @@ import 'package:bloody/core/layout/main_layout.dart';
 import 'package:bloody/core/services/fcm_service.dart';
 import 'package:bloody/core/theme/app_colors.dart';
 import 'package:bloody/core/widgets/app_loading_indicator.dart';
+import 'package:bloody/core/widgets/location_picker_row.dart';
 import 'package:bloody/core/theme/app_spacing.dart';
 import 'package:bloody/features/donor/dashboard/presentation/providers/donor_profile_provider.dart';
 import 'package:bloody/features/receiver/map_finder/presentation/providers/receiver_map_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/providers/auth_provider.dart';
+import 'package:bloody/features/shared/centers_list/presentation/screens/location_picker_screen.dart';
 import 'package:bloody/features/shared/settings/presentation/providers/profile_provider.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/donor_rules_dialog.dart';
 import 'package:bloody/features/shared/auth/presentation/widgets/password_field.dart';
@@ -15,6 +17,7 @@ import 'package:bloody/features/shared/auth/utils/auth_validators.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -37,6 +40,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   String? _selectedBloodType;
   String? _selectedCity;
   String _selectedType = 'receiver';
+  double? _selectedLat;
+  double? _selectedLng;
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -75,6 +80,28 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
     setState(() => _selectedType = type);
   }
 
+  Future<void> _pickLocation() async {
+    final cityCoords = _selectedCity != null
+        ? AppCities.cityCoordinates[_selectedCity!]
+        : null;
+    final initialPos = (_selectedLat != null && _selectedLng != null)
+        ? LatLng(_selectedLat!, _selectedLng!)
+        : (cityCoords != null ? LatLng(cityCoords[0], cityCoords[1]) : null);
+
+    final result = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(initialLocation: initialPos),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        _selectedLat = result.latitude;
+        _selectedLng = result.longitude;
+      });
+    }
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -111,6 +138,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
           bloodType: _selectedBloodType!,
           city: _selectedCity!,
           birthDate: _selectedDate!,
+          latitude: _selectedLat,
+          longitude: _selectedLng,
         );
 
     if (!mounted) return;
@@ -249,6 +278,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                                 : (val) => setState(() => _selectedCity = val),
                             validator: (val) =>
                                 val == null ? 'city_required'.tr() : null,
+                          ),
+                          const SizedBox(height: 8),
+                          LocationPickerRow(
+                            latitude: _selectedLat,
+                            longitude: _selectedLng,
+                            enabled: !isLoading,
+                            onTap: isLoading ? null : _pickLocation,
                           ),
                           const SizedBox(height: 8),
                           _DatePickerField(

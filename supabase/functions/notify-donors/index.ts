@@ -149,6 +149,7 @@ serve(async (req) => {
         .select('fcm_token')
         .eq('user_type', 'donor')
         .ilike('city', city)
+        .eq('is_forbidden', false)
         .eq('is_available', true)
         .not('fcm_token', 'is', null)
 

@@ -23,6 +23,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
               phone,
               blood_type,
               city,
+              latitude,
+              longitude,
               birth_date,
               user_type,
               is_available,
@@ -38,6 +40,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
         phone: response['phone'],
         bloodType: response['blood_type'],
         city: response['city'],
+        latitude: (response['latitude'] as num?)?.toDouble(),
+        longitude: (response['longitude'] as num?)?.toDouble(),
         birthDate: response['birth_date'],
         userType: response['user_type'] ?? 'donor',
         isAvailable: response['is_available'] ?? false,
@@ -47,6 +51,11 @@ class SettingsRepositoryImpl implements SettingsRepository {
             : null,
         fcmToken: response['fcm_token'],
         bloodRequestReason: response['blood_request_reason'],
+        isForbidden: response['is_forbidden'] ?? false,
+        verificationStatus: response['verification_status'] ?? 'unverified',
+        verifiedAt: response['verified_at'] != null
+            ? DateTime.tryParse(response['verified_at'])
+            : null,
       );
     } catch (e, stack) {
       AppLogger.error('SettingsRepositoryImpl.getProfile', e, stack);
@@ -61,6 +70,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
     String? phone,
     String? bloodType,
     String? city,
+    double? latitude,
+    double? longitude,
     String? birthDate,
   }) async {
     AppLogger.info('SettingsRepositoryImpl.updateProfile for user: $userId');
@@ -70,6 +81,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
       if (phone != null) updateData['phone'] = phone;
       if (bloodType != null) updateData['blood_type'] = bloodType;
       if (city != null) updateData['city'] = city;
+      if (latitude != null) updateData['latitude'] = latitude;
+      if (longitude != null) updateData['longitude'] = longitude;
       if (birthDate != null) updateData['birth_date'] = birthDate;
 
       if (updateData.isEmpty) return true;
